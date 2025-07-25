@@ -18,7 +18,7 @@ with col2:
 
 st.markdown("Explore battery and rider performance metrics over time (seconds).")
 
-# Cache the CSV loading with no DataFrame hashing to force refresh
+# Cache the CSV loading with no DataFrame hashing
 @st.cache_data(hash_funcs={pd.DataFrame: lambda _: None})
 def load_data():
     csv_url = "https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/powerpedal_test_results.csv"
@@ -30,7 +30,7 @@ def load_data():
             st.error(f"Missing columns: {missing_cols}. Found: {list(df.columns)}")
             return pd.DataFrame()
         # Ensure numeric columns
-        for col in ["Time", "Battery Power", "Rider Power", "Battery Voltage", "Speed"]:
+        for col in required_cols:
             df[col] = pd.to_numeric(df[col], errors="coerce")
         return df
     except Exception as e:
@@ -49,7 +49,7 @@ if not df.empty:
 
     # Sidebar for interactivity
     st.sidebar.header("Filter Options")
-    st.sidebar.markdown("Adjust the time range and select metrics to display.")
+    st.sidebar.markdown("Adjust the time range, select metrics, and choose graph scale.")
 
     # Time range filter
     min_time, max_time = int(df["Time"].min()), int(df["Time"].max())
@@ -73,6 +73,14 @@ if not df.empty:
     show_battery_power = st.sidebar.checkbox("Show Battery Power", value=True)
     show_battery_voltage = st.sidebar.checkbox("Show Battery Voltage", value=True)
     show_speed = st.sidebar.checkbox("Show Speed", value=True)
+
+    # Scale selector
+    scale_option = st.sidebar.selectbox(
+        "Select Y-Axis Scale",
+        ["Linear", "Logarithmic"],
+        index=0
+    )
+    yaxis_type = "linear" if scale_option == "Linear" else "log"
 
     # Display key metrics
     col1, col2, col3, col4 = st.columns(4)
@@ -112,6 +120,7 @@ if not df.empty:
             title="Power vs. Time",
             xaxis_title="Time (seconds)",
             yaxis_title="Power (W)",
+            yaxis_type=yaxis_type,
             hovermode="closest",
             template="plotly_dark",
             height=400
@@ -133,6 +142,7 @@ if not df.empty:
             title="Battery Voltage vs. Time",
             xaxis_title="Time (seconds)",
             yaxis_title="Voltage (V)",
+            yaxis_type=yaxis_type,
             hovermode="closest",
             template="plotly_dark",
             height=400
@@ -153,6 +163,7 @@ if not df.empty:
         title="Speed vs. Time",
         xaxis_title="Time (seconds)",
         yaxis_title="Speed (km/h)",
+        yaxis_type=yaxis_type,
         hovermode="closest",
         template="plotly_dark",
         height=400
