@@ -2,11 +2,20 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objs as go
 
-# Set page config for better appearance
-st.set_page_config(page_title="PowerPedal Dashboard", layout="wide")
+# Set page config with logo as icon
+st.set_page_config(
+    page_title="PowerPedal Dashboard",
+    page_icon="https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/logo.png",
+    layout="wide"
+)
 
-# Title and description
-st.title("🚴‍♂️ PowerPedal Test Results Dashboard")
+# Display logo and title
+col1, col2 = st.columns([1, 5])  # Adjust ratio for logo and title
+with col1:
+    st.image("https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/logo.png", width=350)
+with col2:
+    st.markdown("<h1 style='margin-top: 20px;'>PowerPedal Test Results Dashboard</h1>", unsafe_allow_html=True)
+
 st.markdown("Explore battery and rider performance metrics over time (seconds).")
 
 # Cache the CSV loading
@@ -45,8 +54,8 @@ if not df.empty:
     )
     df_filtered = df[(df["Time"] >= time_range[0]) & (df["Time"] <= time_range[1])]
 
-    # Downsample data for large datasets (plot every nth point)
-    max_points = 1000  # Limit to 1000 points per graph
+    # Downsample data for large datasets
+    max_points = 1000
     if len(df_filtered) > max_points:
         step = len(df_filtered) // max_points
         df_filtered = df_filtered.iloc[::step, :]
