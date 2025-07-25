@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objs as go
 
-# Set page config with logo as icon
+# Set page config with logo
 st.set_page_config(
     page_title="PowerPedal Dashboard",
     page_icon="https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/logo.png",
@@ -10,9 +10,9 @@ st.set_page_config(
 )
 
 # Display logo and title
-col1, col2 = st.columns([1, 5])  # Adjust ratio for logo and title
+col1, col2 = st.columns([1, 5])
 with col1:
-    st.image("https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/logo.png", width=350)
+    st.image("https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/logo.png", width=100)
 with col2:
     st.markdown("<h1 style='margin-top: 20px;'>PowerPedal Test Results Dashboard</h1>", unsafe_allow_html=True)
 
@@ -35,10 +35,13 @@ def load_data():
         return pd.DataFrame()
 
 # Load data with loading message
-with st.spinner("Loading data..."):
+with st.spinner("Loading data (this may take a moment for large datasets)..."):
     df = load_data()
 
 if not df.empty:
+    # Display data summary
+    st.markdown(f"**Data Summary**: {len(df)} rows loaded, covering Time {int(df['Time'].min())} to {int(df['Time'].max())} seconds.")
+
     # Sidebar for interactivity
     st.sidebar.header("Filter Options")
     st.sidebar.markdown("Adjust the time range and select metrics to display.")
@@ -61,10 +64,10 @@ if not df.empty:
         df_filtered = df_filtered.iloc[::step, :]
 
     # Metric selection
-    show_rider_power = st.sidebar.checkbox("Show Rider Power (currently all zeros)", value=False)
+    show_rider_power = st.sidebar.checkbox("Show Rider Power", value=df["Rider Power"].max() > 0)
     show_battery_power = st.sidebar.checkbox("Show Battery Power", value=True)
     show_battery_voltage = st.sidebar.checkbox("Show Battery Voltage", value=True)
-    show_speed = st.sidebar.checkbox("Show Speed", value=True)
+    show_speed = st.sidebar.checkbox("Show Speed", value=df["Speed"].max() > 0)
 
     # Display key metrics
     col1, col2, col3 = st.columns(3)
@@ -149,7 +152,7 @@ if not df.empty:
     )
     st.plotly_chart(fig_speed, use_container_width=True)
 
-    if not show_rider_power:
+    if not show_rider_power and df["Rider Power"].max() == 0:
         st.warning("Rider Power is hidden (all zeros). Enable in sidebar to view.")
 else:
     st.warning("No data to display.")
