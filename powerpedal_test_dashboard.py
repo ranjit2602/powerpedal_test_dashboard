@@ -18,8 +18,8 @@ with col2:
 
 st.markdown("Explore battery and rider performance metrics over time (seconds).")
 
-# Cache the CSV loading
-@st.cache_data
+# Cache the CSV loading with no DataFrame hashing to force refresh
+@st.cache_data(hash_funcs={pd.DataFrame: lambda _: None})
 def load_data():
     csv_url = "https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/powerpedal_test_results.csv"
     try:
@@ -29,6 +29,9 @@ def load_data():
         if missing_cols:
             st.error(f"Missing columns: {missing_cols}. Found: {list(df.columns)}")
             return pd.DataFrame()
+        # Ensure numeric columns
+        for col in ["Time", "Battery Power", "Rider Power", "Battery Voltage", "Speed"]:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
         return df
     except Exception as e:
         st.error(f"Error reading CSV: {e}")
@@ -39,8 +42,10 @@ with st.spinner("Loading data (this may take a moment for large datasets)..."):
     df = load_data()
 
 if not df.empty:
-    # Display data summary
+    # Debug stats
     st.markdown(f"**Data Summary**: {len(df)} rows loaded, covering Time {int(df['Time'].min())} to {int(df['Time'].max())} seconds.")
+    st.markdown(f"**Rider Power Stats**: Max = {df['Rider Power'].max():.2f} W, Min = {df['Rider Power'].min():.2f} W, Mean = {df['Rider Power'].mean():.2f} W")
+    st.markdown(f"**Speed Stats**: Max = {df['Speed'].max():.2f} km/h, Min = {df['Speed'].min():.2f} km/h, Mean = {df['Speed'].mean():.2f} km/h")
 
     # Sidebar for interactivity
     st.sidebar.header("Filter Options")
@@ -64,18 +69,20 @@ if not df.empty:
         df_filtered = df_filtered.iloc[::step, :]
 
     # Metric selection
-    show_rider_power = st.sidebar.checkbox("Show Rider Power", value=df["Rider Power"].max() > 0)
+    show_rider_power = st.sidebar.checkbox("Show Rider Power", value=True)
     show_battery_power = st.sidebar.checkbox("Show Battery Power", value=True)
     show_battery_voltage = st.sidebar.checkbox("Show Battery Voltage", value=True)
-    show_speed = st.sidebar.checkbox("Show Speed", value=df["Speed"].max() > 0)
+    show_speed = st.sidebar.checkbox("Show Speed", value=True)
 
     # Display key metrics
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("Max Battery Power", f"{df_filtered['Battery Power'].max():.2f} W")
     with col2:
-        st.metric("Average Speed", f"{df_filtered['Speed'].mean():.2f} km/h")
+        st.metric("Max Rider Power", f"{df_filtered['Rider Power'].max():.2f} W")
     with col3:
+        st.metric("Average Speed", f"{df_filtered['Speed'].mean():.2f} km/h")
+    with col4:
         st.metric("Max Battery Voltage", f"{df_filtered['Battery Voltage'].max():.2f} V")
 
     # Create graphs
@@ -151,8 +158,5 @@ if not df.empty:
         height=400
     )
     st.plotly_chart(fig_speed, use_container_width=True)
-
-    if not show_rider_power and df["Rider Power"].max() == 0:
-        st.warning("Rider Power is hidden (all zeros). Enable in sidebar to view.")
 else:
     st.warning("No data to display.")
