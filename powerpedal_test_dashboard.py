@@ -8,7 +8,7 @@ st.title("PowerPedal Test Results Dashboard")
 st.markdown("This dashboard shows Battery Power and Rider Power over Time.")
 
 # GitHub raw CSV URL (we'll update this after uploading the CSV)
-csv_url = "https://raw.githubusercontent.com/your-username/powerpedal_test_dashboard/main/powerpedal_test_results.csv"
+csv_url = "https://github.com/ranjit2602/powerpedal_test_dashboard/blob/main/powerpedal_test_results.csv"
 
 # Read the CSV file
 try:
