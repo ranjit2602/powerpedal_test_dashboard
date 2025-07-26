@@ -13,7 +13,7 @@ st.set_page_config(
 # Display logo and title
 col1, col2 = st.columns([1, 5])
 with col1:
-    st.image("https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/logo.png", width=150)  # Reduced logo size
+    st.image("https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/logo.png", width=400)  # Balanced logo size
 with col2:
     st.markdown("<h1 style='margin-top: 20px;'>PowerPedal™ Test Results Dashboard</h1>", unsafe_allow_html=True)
 
@@ -128,17 +128,32 @@ if not df.empty:
         yaxis=dict(range=y_range),
         hovermode="closest",
         template="plotly_dark",
-        height=400,  # Reduced for mobile
-        margin=dict(t=50, b=50, l=20, r=20)  # Tightened margins
+        height=400,  # Base height for desktop
+        margin=dict(t=50, b=50, l=10, r=10),  # Minimized margins
+        autosize=True  # Enable Plotly responsive width
     )
-    st.plotly_chart(fig_power, use_container_width=True)
+    st.plotly_chart(fig_power, use_container_width=True, config={'responsive': True})
 
-    # Add custom CSS for mobile responsiveness
+    # Add custom CSS for mobile responsiveness and full width
     st.markdown("""
         <style>
+        /* Remove Streamlit's default padding/margins */
+        .main .block-container {
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+            padding-top: 1rem !important;
+            padding-bottom: 1rem !important;
+            max-width: 100% !important;
+        }
+        /* Ensure Plotly chart uses full width */
+        .stPlotlyChart {
+            width: 100% !important;
+            margin-left: 0 !important;
+            margin-right: 0 !important;
+        }
         @media (max-width: 600px) {
             .stPlotlyChart {
-                height: 50vh !important;
+                height: 50vh !important;  /* Dynamic height */
             }
             .stMetric label {
                 font-size: 12px !important;
@@ -160,6 +175,10 @@ if not df.empty:
             }
             .stImage img {
                 width: 100px !important;
+            }
+            /* Stack metrics vertically on small screens */
+            .css-1v8iw7l > div {
+                flex-direction: column !important;
             }
         }
         </style>
