@@ -13,7 +13,7 @@ st.set_page_config(
 # Display logo and title
 col1, col2 = st.columns([1, 5])
 with col1:
-    st.image("https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/logo.png", width=400)  # Balanced logo size
+    st.image("https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/logo.png", width=500)  # Balanced logo size
 with col2:
     st.markdown("<h1 style='margin-top: 20px;'>PowerPedal™ Test Results Dashboard</h1>", unsafe_allow_html=True)
 
