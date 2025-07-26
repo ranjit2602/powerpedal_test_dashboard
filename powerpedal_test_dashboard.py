@@ -129,8 +129,15 @@ if not df.empty:
         hovermode="closest",
         template="plotly_dark",
         height=400,  # Base height for desktop
-        margin=dict(t=50, b=50, l=10, r=10),  # Minimized margins
-        autosize=True  # Enable Plotly responsive width
+        margin=dict(t=70, b=50, l=10, r=10),  # Increased top margin for legend
+        autosize=True,  # Enable responsive width
+        legend=dict(
+            orientation="h",  # Horizontal legend
+            yanchor="top",
+            y=1.1,  # Position above graph
+            xanchor="center",
+            x=0.5  # Center horizontally
+        )
     )
     st.plotly_chart(fig_power, use_container_width=True, config={'responsive': True})
 
@@ -179,6 +186,10 @@ if not df.empty:
             /* Stack metrics vertically on small screens */
             .css-1v8iw7l > div {
                 flex-direction: column !important;
+            }
+            /* Adjust legend font size on mobile */
+            .legend text {
+                font-size: 10px !important;
             }
         }
         </style>
