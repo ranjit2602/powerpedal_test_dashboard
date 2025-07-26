@@ -6,13 +6,14 @@ import plotly.graph_objs as go
 st.set_page_config(
     page_title="PowerPedal Dashboard",
     page_icon="https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/logo.png",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"  # Ensure sidebar is visible on mobile
 )
 
 # Display logo and title
 col1, col2 = st.columns([1, 5])
 with col1:
-    st.image("https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/logo.png", width=500)
+    st.image("https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/logo.png", width=150)  # Reduced logo size
 with col2:
     st.markdown("<h1 style='margin-top: 20px;'>PowerPedal™ Test Results Dashboard</h1>", unsafe_allow_html=True)
 
@@ -58,7 +59,7 @@ if not df.empty:
     # Downsample data for large datasets
     max_points = 1000
     if len(df_filtered) > max_points:
-        step = len(df_filtered) // max_points 
+        step = len(df_filtered) // max_points
         df_filtered = df_filtered.iloc[::step, :]
 
     # Metric selection
@@ -87,7 +88,7 @@ if not df.empty:
     x_range = [max(min_time, x_range[0]), min(max_time, x_range[1])]
 
     # Display key metrics
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3 = st.columns([1, 1, 1])  # Equal spacing for metrics
     with col1:
         st.metric("Max Battery Power", f"{df_filtered['Battery Power'].max():.2f} W")
     with col2:
@@ -127,9 +128,41 @@ if not df.empty:
         yaxis=dict(range=y_range),
         hovermode="closest",
         template="plotly_dark",
-        height=600,
-        margin=dict(t=50, b=50)
+        height=400,  # Reduced for mobile
+        margin=dict(t=50, b=50, l=20, r=20)  # Tightened margins
     )
     st.plotly_chart(fig_power, use_container_width=True)
+
+    # Add custom CSS for mobile responsiveness
+    st.markdown("""
+        <style>
+        @media (max-width: 600px) {
+            .stPlotlyChart {
+                height: 50vh !important;
+            }
+            .stMetric label {
+                font-size: 12px !important;
+            }
+            .stMetric div {
+                font-size: 14px !important;
+            }
+            .stSlider label {
+                font-size: 12px !important;
+            }
+            .stCheckbox label {
+                font-size: 12px !important;
+            }
+            .stSelectbox label {
+                font-size: 12px !important;
+            }
+            h1 {
+                font-size: 24px !important;
+            }
+            .stImage img {
+                width: 100px !important;
+            }
+        }
+        </style>
+    """, unsafe_allow_html=True)
 else:
     st.warning("No data to display.")
