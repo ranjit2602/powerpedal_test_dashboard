@@ -14,13 +14,8 @@ col1, col2 = st.columns([1, 5])
 with col1:
     st.image("https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/logo.png", width=500)
 with col2:
-    st.markdown("<h1 style='margin-top: 20px;'>powerpedal™ Test Results Dashboard</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='margin-top: 20px;'>PowerPedal™ Test Results Dashboard</h1>", unsafe_allow_html=True)
 
-<<<<<<< HEAD
-=======
-st.markdown("Explore battery and rider performance metrics over time (seconds).")
-
->>>>>>> b1a63831c2c2e142b04255362ad5e3511cffa4f0
 # Cache the CSV loading with no DataFrame hashing
 @st.cache_data(hash_funcs={pd.DataFrame: lambda _: None})
 def load_data():
@@ -47,11 +42,7 @@ with st.spinner("Loading data (this may take a moment for large datasets)..."):
 if not df.empty:
     # Sidebar for interactivity
     st.sidebar.header("Filter Options")
-<<<<<<< HEAD
     st.sidebar.markdown("Adjust the time range, select metrics, and choose axis scales.")
-=======
-    st.sidebar.markdown("Adjust the time range, select metrics, and choose graph scale.")
->>>>>>> b1a63831c2c2e142b04255362ad5e3511cffa4f0
 
     # Time range filter
     min_time, max_time = int(df["Time"].min()), int(df["Time"].max())
@@ -67,7 +58,7 @@ if not df.empty:
     # Downsample data for large datasets
     max_points = 1000
     if len(df_filtered) > max_points:
-        step = len(df_filtered) // max_points
+        step = len(df_filtered) // max_points 
         df_filtered = df_filtered.iloc[::step, :]
 
     # Metric selection
@@ -95,14 +86,6 @@ if not df.empty:
     x_range = [time_center - new_time_range_width / 2, time_center + new_time_range_width / 2]
     x_range = [max(min_time, x_range[0]), min(max_time, x_range[1])]
 
-    # Scale selector
-    scale_option = st.sidebar.selectbox(
-        "Select Y-Axis Scale",
-        ["Linear", "Logarithmic"],
-        index=0
-    )
-    yaxis_type = "linear" if scale_option == "Linear" else "log"
-
     # Display key metrics
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -112,74 +95,11 @@ if not df.empty:
     with col3:
         st.metric("Average Speed", f"{df_filtered['Speed'].mean():.2f} km/h")
 
-<<<<<<< HEAD
     # Main Graph: Power vs. Time
     st.markdown("### Power vs. Time")
     fig_power = go.Figure()
     if show_battery_power:
         fig_power.add_trace(go.Scatter(
-=======
-    # Create graphs
-    st.markdown("### Performance Graphs")
-    col1, col2 = st.columns(2)
-
-    with col1:
-        # Graph 1: Power
-        fig_power = go.Figure()
-        if show_battery_power:
-            fig_power.add_trace(go.Scatter(
-                x=df_filtered["Time"],
-                y=df_filtered["Battery Power"],
-                mode="lines",
-                name="Battery Power (W)",
-                line=dict(color="blue")
-            ))
-        if show_rider_power:
-            fig_power.add_trace(go.Scatter(
-                x=df_filtered["Time"],
-                y=df_filtered["Rider Power"],
-                mode="lines",
-                name="Rider Power (W)",
-                line=dict(color="red")
-            ))
-        fig_power.update_layout(
-            title="Power vs. Time",
-            xaxis_title="Time (seconds)",
-            yaxis_title="Power (W)",
-            yaxis_type=yaxis_type,
-            hovermode="closest",
-            template="plotly_dark",
-            height=400
-        )
-        st.plotly_chart(fig_power, use_container_width=True)
-
-    with col2:
-        # Graph 2: Battery Voltage
-        fig_voltage = go.Figure()
-        if show_battery_voltage:
-            fig_voltage.add_trace(go.Scatter(
-                x=df_filtered["Time"],
-                y=df_filtered["Battery Voltage"],
-                mode="lines",
-                name="Battery Voltage (V)",
-                line=dict(color="green")
-            ))
-        fig_voltage.update_layout(
-            title="Battery Voltage vs. Time",
-            xaxis_title="Time (seconds)",
-            yaxis_title="Voltage (V)",
-            yaxis_type=yaxis_type,
-            hovermode="closest",
-            template="plotly_dark",
-            height=400
-        )
-        st.plotly_chart(fig_voltage, use_container_width=True)
-
-    # Graph 3: Speed
-    fig_speed = go.Figure()
-    if show_speed:
-        fig_speed.add_trace(go.Scatter(
->>>>>>> b1a63831c2c2e142b04255362ad5e3511cffa4f0
             x=df_filtered["Time"],
             y=df_filtered["Battery Power"],
             mode="lines",
@@ -202,14 +122,9 @@ if not df.empty:
     fig_power.update_layout(
         title="Power vs. Time",
         xaxis_title="Time (seconds)",
-<<<<<<< HEAD
         yaxis_title="Power (W)",
         xaxis=dict(range=x_range),
         yaxis=dict(range=y_range),
-=======
-        yaxis_title="Speed (km/h)",
-        yaxis_type=yaxis_type,
->>>>>>> b1a63831c2c2e142b04255362ad5e3511cffa4f0
         hovermode="closest",
         template="plotly_dark",
         height=600,
