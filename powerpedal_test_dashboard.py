@@ -19,12 +19,13 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Display logo and title
-col1, col2 = st.columns([1, 5])
-with col1:
-    st.image("https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/logo.png", width=400)
-with col2:
-    st.markdown("<h1 style='margin-top: 20px;'>PowerPedal™ Test Results Dashboard</h1>", unsafe_allow_html=True)
+# Display logo and title using flexbox
+st.markdown("""
+    <div style="display: flex; align-items: center; gap: 5px;">
+        <img src="https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/logo.png" style="width: 200px;">
+        <h1>PowerPedal™ Test Results Dashboard</h1>
+    </div>
+""", unsafe_allow_html=True)
 
 # Cache the CSV loading with no DataFrame hashing
 @st.cache_data(hash_funcs={pd.DataFrame: lambda _: None})
@@ -37,10 +38,9 @@ def load_data():
         if missing_cols:
             st.error(f"Missing columns: {missing_cols}. Found: {list(df.columns)}")
             return pd.DataFrame()
-        # Ensure numeric columns and handle NaNs
         for col in required_cols:
             df[col] = pd.to_numeric(df[col], errors="coerce")
-        df = df.dropna()  # Remove rows with NaN values
+        df = df.dropna()
         return df
     except Exception as e:
         st.error(f"Error reading CSV: {e}")
@@ -76,7 +76,6 @@ def lttb_downsample_multicolumn(df, max_points, columns, time_col="Time"):
             st.warning(f"LTTB failed for {col}: {e}. Using max/min sampling.")
             return max_min_sampling(df, max_points)
     
-    # Merge sampled data on Time (interpolate if needed)
     result = sampled_dfs[0]
     for i in range(1, len(sampled_dfs)):
         result = result.merge(sampled_dfs[i], on=time_col, how="outer")
@@ -213,14 +212,15 @@ if not df.empty:
                         df_filtered["Rider Power"].max() if show_rider_power and not df_filtered.empty else 0)
         power_min = min(df_filtered["Battery Power"].min() if show_battery_power and not df_filtered.empty else float('inf'),
                         df_filtered["Rider Power"].min() if show_rider_power and not df_filtered.empty else float('inf'))
-        y_range = [power_min / y_scale_factor, power_max * y_scale_factor] if power_max > 0 else [0, 100]
+        # Increased y-axis range for more headroom
+        y_range = [min(0, power_min / y_scale_factor), max(150, power_max * 1.3 * y_scale_factor)] if power_max > 0 else [0, 150]
         fig_power.update_layout(
             title="Power vs. Time",
             xaxis_title="Time (seconds)",
             yaxis_title="Power (W)",
-            xaxis=dict(range=x_range, fixedrange=True),  # Disable x-axis zoom/pan
-            yaxis=dict(range=y_range, fixedrange=True),  # Disable y-axis zoom/pan
-            dragmode=False,  # Disable drag interactions
+            xaxis=dict(range=x_range, fixedrange=True),
+            yaxis=dict(range=y_range, fixedrange=True),
+            dragmode=False,
             hovermode="closest",
             template="plotly_white",
             height=600,
@@ -238,15 +238,15 @@ if not df.empty:
             fig_power,
             use_container_width=True,
             config={
-                'modeBarButtons': [['toImage']],  # Only show full-screen button
-                'displayModeBar': True,  # Show toolbar with only full-screen
+                'modeBarButtons': [['toImage']],
+                'displayModeBar': True,
                 'displaylogo': False,
                 'showTips': False,
                 'responsive': True
             }
         )
 
-    # Add custom CSS for mobile responsiveness and full width
+    # Add custom CSS for mobile responsiveness and desktop alignment
     st.markdown("""
         <style>
         .main .block-container {
@@ -260,6 +260,12 @@ if not df.empty:
             width: 100% !important;
             margin-left: 0 !important;
             margin-right: 0 !important;
+        }
+        /* Desktop header alignment */
+        div[data-testid="stHorizontalBlock"] > div {
+            display: flex !important;
+            align-items: center !important;
+            gap: 10px !important;
         }
         @media (max-width: 600px) {
             .stPlotlyChart {
@@ -281,13 +287,17 @@ if not df.empty:
                 font-size: 12px !important;
             }
             h1 {
-                font-size: 24px !important;
+                font-size: 20px !important;
             }
             .stImage img {
-                width: 100px !important;
+                width: 80px !important;
             }
-            .css-1v8iw7l > div {
-                flex-direction: column !important;
+            /* Mobile header alignment */
+            div[data-testid="stHorizontalBlock"] > div {
+                display: flex !important;
+                flex-direction: row !important;
+                align-items: center !important;
+                gap: 10px !important;
             }
             .legend text {
                 font-size: 10px !important;
