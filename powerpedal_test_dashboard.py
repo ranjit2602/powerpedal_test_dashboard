@@ -1,19 +1,28 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objs as go
+import numpy as np
+
+# Try importing LTTB, fallback to max/min sampling if not available
+try:
+    import lttb
+    LTTB_AVAILABLE = True
+except ImportError:
+    LTTB_AVAILABLE = False
+    st.warning("LTTB library not installed. Using max/min sampling instead. Install with `pip install lttb` for better results.")
 
 # Set page config with logo
 st.set_page_config(
     page_title="PowerPedal Dashboard",
     page_icon="https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/logo.png",
     layout="wide",
-    initial_sidebar_state="expanded"  # Ensure sidebar is visible on mobile
+    initial_sidebar_state="expanded"
 )
 
 # Display logo and title
 col1, col2 = st.columns([1, 5])
 with col1:
-    st.image("https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/logo.png", width=400)  # Balanced logo size
+    st.image("https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/logo.png", width=400)
 with col2:
     st.markdown("<h1 style='margin-top: 20px;'>PowerPedal™ Test Results Dashboard</h1>", unsafe_allow_html=True)
 
@@ -28,123 +37,218 @@ def load_data():
         if missing_cols:
             st.error(f"Missing columns: {missing_cols}. Found: {list(df.columns)}")
             return pd.DataFrame()
-        # Ensure numeric columns
+        # Ensure numeric columns and handle NaNs
         for col in required_cols:
             df[col] = pd.to_numeric(df[col], errors="coerce")
+        df = df.dropna()  # Remove rows with NaN values
         return df
     except Exception as e:
         st.error(f"Error reading CSV: {e}")
         return pd.DataFrame()
 
-# Load data with loading message
+# Custom max/min sampling function
+def max_min_sampling(df, max_points):
+    bin_size = len(df) // max_points + 1
+    sampled_data = []
+    for i in range(0, len(df), bin_size):
+        bin_data = df.iloc[i:i + bin_size]
+        if not bin_data.empty:
+            sampled_data.append({
+                "Time": bin_data["Time"].mean(),
+                "Battery Power": bin_data["Battery Power"].max(),
+                "Rider Power": bin_data["Rider Power"].max(),
+                "Speed": bin_data["Speed"].mean()
+            })
+    return pd.DataFrame(sampled_data)
+
+# LTTB downsampling for multiple columns
+def lttb_downsample_multicolumn(df, max_points, columns, time_col="Time"):
+    if len(df) <= max_points:
+        return df
+    sampled_dfs = []
+    for col in columns:
+        try:
+            data = np.array([df[time_col], df[col]]).T
+            sampled = lttb.downsample(data, n_out=max_points)
+            sampled_df = pd.DataFrame(sampled, columns=[time_col, col])
+            sampled_dfs.append(sampled_df)
+        except Exception as e:
+            st.warning(f"LTTB failed for {col}: {e}. Using max/min sampling.")
+            return max_min_sampling(df, max_points)
+    
+    # Merge sampled data on Time (interpolate if needed)
+    result = sampled_dfs[0]
+    for i in range(1, len(sampled_dfs)):
+        result = result.merge(sampled_dfs[i], on=time_col, how="outer")
+    result = result.interpolate(method="linear").fillna(method="ffill").fillna(method="bfill")
+    return result
+
+# Load data
 with st.spinner("Loading data (this may take a moment for large datasets)..."):
     df = load_data()
 
-if not df.empty:
-    # Sidebar for interactivity
-    st.sidebar.header("Filter Options")
-    st.sidebar.markdown("Adjust the time range, select metrics, and choose axis scales.")
+# Sidebar for interactivity
+st.sidebar.header("Filter Options")
+st.sidebar.markdown("Adjust the time range, select metrics, and control display options.")
 
-    # Time range filter
+# Full data view toggle
+show_full = st.sidebar.checkbox("Show Full Dataset", value=False, key="show_full")
+
+# Time range slider (only shown if not viewing full dataset)
+if not df.empty:
     min_time, max_time = int(df["Time"].min()), int(df["Time"].max())
+    default_range = (max(min_time, max_time - 100), max_time) if max_time - min_time > 100 else (min_time, max_time)
     time_range = st.sidebar.slider(
         "Select Time Range (seconds)",
         min_time,
         max_time,
-        (min_time, max_time),
-        step=1
+        default_range,
+        step=1,
+        help="Slide to explore different time periods in the dataset.",
+        disabled=show_full
     )
-    df_filtered = df[(df["Time"] >= time_range[0]) & (df["Time"] <= time_range[1])]
 
-    # Downsample data for large datasets
-    max_points = 1000
+# Downsampling factor
+downsample_factor = st.sidebar.slider(
+    "Downsampling Factor (Higher = Less Clutter)",
+    1,
+    100,
+    50,
+    step=1,
+    help="Higher values reduce the number of points displayed, making the graph less cluttered."
+)
+
+# Optional smoothing (moving average)
+smoothing = st.sidebar.checkbox("Apply Smoothing (Moving Average)", value=False)
+window_size = st.sidebar.slider(
+    "Smoothing Window Size",
+    3,
+    21,
+    5,
+    step=2,
+    help="Larger window sizes create smoother lines but may reduce detail."
+) if smoothing else 1
+
+# Metric selection
+show_rider_power = st.sidebar.checkbox("Show Rider Power", value=True)
+show_battery_power = st.sidebar.checkbox("Show Battery Power", value=True)
+
+# X/Y-axis scale selectors
+y_scale_option = st.sidebar.selectbox(
+    "Select Y-Axis Scale Factor",
+    ["0.25x", "0.5x", "1x", "2x", "4x"],
+    index=2
+)
+y_scale_factor = {"0.25x": 0.25, "0.5x": 0.5, "1x": 1.0, "2x": 2.0, "4x": 4.0}[y_scale_option]
+x_scale_option = st.sidebar.selectbox(
+    "Select Time (X-Axis) Scale Factor",
+    ["0.25x", "0.5x", "1x", "2x", "4x"],
+    index=2
+)
+x_scale_factor = {"0.25x": 0.25, "0.5x": 0.5, "1x": 1.0, "2x": 2.0, "4x": 4.0}[x_scale_option]
+
+# Filter data based on time range or full view
+if not df.empty:
+    if show_full:
+        df_filtered = df.copy()
+        x_range = [df["Time"].min(), df["Time"].max()]
+    else:
+        df_filtered = df[(df["Time"] >= time_range[0]) & (df["Time"] <= time_range[1])]
+        x_range = [time_range[0] / x_scale_factor, time_range[1] * x_scale_factor]
+
+    # Downsampling
+    max_points = max(50, len(df_filtered) // downsample_factor)
     if len(df_filtered) > max_points:
-        step = len(df_filtered) // max_points
-        df_filtered = df_filtered.iloc[::step, :]
+        if LTTB_AVAILABLE:
+            df_filtered = lttb_downsample_multicolumn(df_filtered, max_points, ["Battery Power", "Rider Power", "Speed"])
+        else:
+            df_filtered = max_min_sampling(df_filtered, max_points)
 
-    # Metric selection
-    show_rider_power = st.sidebar.checkbox("Show Rider Power", value=True)
-    show_battery_power = st.sidebar.checkbox("Show Battery Power", value=True)
+    # Apply smoothing if enabled
+    if smoothing and not df_filtered.empty:
+        df_filtered["Battery Power"] = df_filtered["Battery Power"].rolling(window=window_size, center=True, min_periods=1).mean()
+        df_filtered["Rider Power"] = df_filtered["Rider Power"].rolling(window=window_size, center=True, min_periods=1).mean()
+        df_filtered["Speed"] = df_filtered["Speed"].rolling(window=window_size, center=True, min_periods=1).mean()
 
-    # X/Y-axis scale selectors
-    y_scale_option = st.sidebar.selectbox(
-        "Select Y-Axis Scale Factor",
-        ["0.25x", "0.5x", "1x", "2x", "4x"],
-        index=2
-    )
-    y_scale_factor = {"0.25x": 0.25, "0.5x": 0.5, "1x": 1.0, "2x": 2.0, "4x": 4.0}[y_scale_option]
-    x_scale_option = st.sidebar.selectbox(
-        "Select Time (X-Axis) Scale Factor",
-        ["0.25x", "0.5x", "1x", "2x", "4x"],
-        index=2
-    )
-    x_scale_factor = {"0.25x": 0.25, "0.5x": 0.5, "1x": 1.0, "2x": 2.0, "4x": 4.0}[x_scale_option]
+    # Placeholders for graph and metrics
+    placeholder_metrics = st.empty()
+    placeholder_graph = st.empty()
 
-    # Calculate x-axis range
-    time_range_width = time_range[1] - time_range[0]
-    time_center = (time_range[0] + time_range[1]) / 2
-    new_time_range_width = time_range_width / x_scale_factor
-    x_range = [time_center - new_time_range_width / 2, time_center + new_time_range_width / 2]
-    x_range = [max(min_time, x_range[0]), min(max_time, x_range[1])]
-
-    # Display key metrics
-    col1, col2, col3 = st.columns([1, 1, 1])  # Equal spacing for metrics
-    with col1:
-        st.metric("Max Battery Power", f"{df_filtered['Battery Power'].max():.2f} W")
-    with col2:
-        st.metric("Max Rider Power", f"{df_filtered['Rider Power'].max():.2f} W")
-    with col3:
-        st.metric("Average Speed", f"{df_filtered['Speed'].mean():.2f} km/h")
+    # Metrics in a container
+    with placeholder_metrics.container():
+        st.markdown("### Key Metrics")
+        col1, col2, col3 = st.columns([1, 1, 1])
+        with col1:
+            st.metric("Max Battery Power", f"{df_filtered['Battery Power'].max():.2f} W" if not df_filtered.empty else "N/A")
+        with col2:
+            st.metric("Max Rider Power", f"{df_filtered['Rider Power'].max():.2f} W" if not df_filtered.empty else "N/A")
+        with col3:
+            st.metric("Average Speed", f"{df_filtered['Speed'].mean():.2f} km/h" if not df_filtered.empty else "N/A")
 
     # Main Graph: Power vs. Time
-    st.markdown("### Power vs. Time")
-    fig_power = go.Figure()
-    if show_battery_power:
-        fig_power.add_trace(go.Scatter(
-            x=df_filtered["Time"],
-            y=df_filtered["Battery Power"],
-            mode="lines",
-            name="Battery Power (W)",
-            line=dict(color="blue")
-        ))
-    if show_rider_power:
-        fig_power.add_trace(go.Scatter(
-            x=df_filtered["Time"],
-            y=df_filtered["Rider Power"],
-            mode="lines",
-            name="Rider Power (W)",
-            line=dict(color="red")
-        ))
-    power_max = max(df_filtered["Battery Power"].max() if show_battery_power else 0,
-                    df_filtered["Rider Power"].max() if show_rider_power else 0)
-    power_min = min(df_filtered["Battery Power"].min() if show_battery_power else float('inf'),
-                    df_filtered["Rider Power"].min() if show_rider_power else float('inf'))
-    y_range = [power_min / y_scale_factor, power_max * y_scale_factor] if power_max > 0 else [0, 100]
-    fig_power.update_layout(
-        title="Power vs. Time",
-        xaxis_title="Time (seconds)",
-        yaxis_title="Power (W)",
-        xaxis=dict(range=x_range),
-        yaxis=dict(range=y_range),
-        hovermode="closest",
-        template="plotly_dark",
-        height=400,  # Base height for desktop
-        margin=dict(t=70, b=50, l=10, r=10),  # Increased top margin for legend
-        autosize=True,  # Enable responsive width
-        legend=dict(
-            orientation="h",  # Horizontal legend
-            yanchor="top",
-            y=1.1,  # Position above graph
-            xanchor="center",
-            x=0.5  # Center horizontally
+    with placeholder_graph.container():
+        st.markdown("### Power vs. Time")
+        fig_power = go.Figure()
+        if show_battery_power and not df_filtered.empty:
+            fig_power.add_trace(go.Scatter(
+                x=df_filtered["Time"],
+                y=df_filtered["Battery Power"],
+                mode="lines",
+                name="Battery Power (W)",
+                line=dict(color="blue", width=1.2),
+                opacity=0.7,
+                hovertemplate="Time: %{x:.2f} s<br>Battery Power: %{y:.2f} W<extra></extra>"
+            ))
+        if show_rider_power and not df_filtered.empty:
+            fig_power.add_trace(go.Scatter(
+                x=df_filtered["Time"],
+                y=df_filtered["Rider Power"],
+                mode="lines",
+                name="Rider Power (W)",
+                line=dict(color="red", width=1.2),
+                opacity=0.7,
+                hovertemplate="Time: %{x:.2f} s<br>Rider Power: %{y:.2f} W<extra></extra>"
+            ))
+        power_max = max(df_filtered["Battery Power"].max() if show_battery_power and not df_filtered.empty else 0,
+                        df_filtered["Rider Power"].max() if show_rider_power and not df_filtered.empty else 0)
+        power_min = min(df_filtered["Battery Power"].min() if show_battery_power and not df_filtered.empty else float('inf'),
+                        df_filtered["Rider Power"].min() if show_rider_power and not df_filtered.empty else float('inf'))
+        y_range = [power_min / y_scale_factor, power_max * y_scale_factor] if power_max > 0 else [0, 100]
+        fig_power.update_layout(
+            title="Power vs. Time",
+            xaxis_title="Time (seconds)",
+            yaxis_title="Power (W)",
+            xaxis=dict(range=x_range, fixedrange=True),  # Disable x-axis zoom/pan
+            yaxis=dict(range=y_range, fixedrange=True),  # Disable y-axis zoom/pan
+            dragmode=False,  # Disable drag interactions
+            hovermode="closest",
+            template="plotly_white",
+            height=600,
+            margin=dict(t=70, b=50, l=10, r=10),
+            autosize=True,
+            legend=dict(
+                orientation="h",
+                yanchor="top",
+                y=1.1,
+                xanchor="center",
+                x=0.5
+            )
         )
-    )
-    st.plotly_chart(fig_power, use_container_width=True, config={'responsive': True})
+        st.plotly_chart(
+            fig_power,
+            use_container_width=True,
+            config={
+                'modeBarButtons': [['toImage']],  # Only show full-screen button
+                'displayModeBar': True,  # Show toolbar with only full-screen
+                'displaylogo': False,
+                'showTips': False,
+                'responsive': True
+            }
+        )
 
     # Add custom CSS for mobile responsiveness and full width
     st.markdown("""
         <style>
-        /* Remove Streamlit's default padding/margins */
         .main .block-container {
             padding-left: 0 !important;
             padding-right: 0 !important;
@@ -152,7 +256,6 @@ if not df.empty:
             padding-bottom: 1rem !important;
             max-width: 100% !important;
         }
-        /* Ensure Plotly chart uses full width */
         .stPlotlyChart {
             width: 100% !important;
             margin-left: 0 !important;
@@ -160,7 +263,7 @@ if not df.empty:
         }
         @media (max-width: 600px) {
             .stPlotlyChart {
-                height: 50vh !important;  /* Dynamic height */
+                height: 50vh !important;
             }
             .stMetric label {
                 font-size: 12px !important;
@@ -183,11 +286,9 @@ if not df.empty:
             .stImage img {
                 width: 100px !important;
             }
-            /* Stack metrics vertically on small screens */
             .css-1v8iw7l > div {
                 flex-direction: column !important;
             }
-            /* Adjust legend font size on mobile */
             .legend text {
                 font-size: 10px !important;
             }
