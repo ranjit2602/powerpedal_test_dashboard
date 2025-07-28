@@ -20,16 +20,16 @@ st.set_page_config(
 )
 
 # Display logo and title
-col1, col2 = st.columns([2, 3])  # Adjusted ratio for better balance
+col1, col2 = st.columns([1, 5])
 with col1:
     st.image("https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/logo.png", width=400)
 with col2:
-    st.markdown("<h1 style='margin-top: 10px;'>PowerPedal™ Test Results Dashboard</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='margin-top: 20px;'>PowerPedal™ Test Results Dashboard</h1>", unsafe_allow_html=True)
 
 # Cache the CSV loading with no DataFrame hashing
 @st.cache_data(hash_funcs={pd.DataFrame: lambda _: None})
 def load_data():
-    csv_url = "https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/powerpedal_test_dashboard/main/powerpedal_test_results.csv"
+    csv_url = "https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/powerpedal_test_results.csv"
     try:
         df = pd.read_csv(csv_url)
         required_cols = ["Time", "Battery Power", "Rider Power", "Speed"]
@@ -37,9 +37,10 @@ def load_data():
         if missing_cols:
             st.error(f"Missing columns: {missing_cols}. Found: {list(df.columns)}")
             return pd.DataFrame()
+        # Ensure numeric columns and handle NaNs
         for col in required_cols:
             df[col] = pd.to_numeric(df[col], errors="coerce")
-        df = df.dropna()
+        df = df.dropna()  # Remove rows with NaN values
         return df
     except Exception as e:
         st.error(f"Error reading CSV: {e}")
@@ -75,6 +76,7 @@ def lttb_downsample_multicolumn(df, max_points, columns, time_col="Time"):
             st.warning(f"LTTB failed for {col}: {e}. Using max/min sampling.")
             return max_min_sampling(df, max_points)
     
+    # Merge sampled data on Time (interpolate if needed)
     result = sampled_dfs[0]
     for i in range(1, len(sampled_dfs)):
         result = result.merge(sampled_dfs[i], on=time_col, how="outer")
@@ -216,9 +218,9 @@ if not df.empty:
             title="Power vs. Time",
             xaxis_title="Time (seconds)",
             yaxis_title="Power (W)",
-            xaxis=dict(range=x_range, fixedrange=True),
-            yaxis=dict(range=y_range, fixedrange=True),
-            dragmode=False,
+            xaxis=dict(range=x_range, fixedrange=True),  # Disable x-axis zoom/pan
+            yaxis=dict(range=y_range, fixedrange=True),  # Disable y-axis zoom/pan
+            dragmode=False,  # Disable drag interactions
             hovermode="closest",
             template="plotly_white",
             height=600,
@@ -236,8 +238,8 @@ if not df.empty:
             fig_power,
             use_container_width=True,
             config={
-                'modeBarButtons': [['toImage']],
-                'displayModeBar': True,
+                'modeBarButtons': [['toImage']],  # Only show full-screen button
+                'displayModeBar': True,  # Show toolbar with only full-screen
                 'displaylogo': False,
                 'showTips': False,
                 'responsive': True
@@ -279,17 +281,13 @@ if not df.empty:
                 font-size: 12px !important;
             }
             h1 {
-                font-size: 20px !important; /* Reduced for mobile */
+                font-size: 24px !important;
             }
             .stImage img {
-                width: 80px !important; /* Smaller logo on mobile */
+                width: 100px !important;
             }
-            /* Target the container for logo and title */
             .css-1v8iw7l > div {
-                display: flex !important;
-                flex-direction: row !important;
-                align-items: center !important;
-                gap: 10px !important;
+                flex-direction: column !important;
             }
             .legend text {
                 font-size: 10px !important;
