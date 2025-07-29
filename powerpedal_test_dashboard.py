@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objs as go
 import numpy as np
+import time
 
 # Set page config with logo
 st.set_page_config(
@@ -11,42 +12,17 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# JavaScript to preserve scroll position
+# Display logo and title using flexbox
 st.markdown("""
-    <script>
-    // Store scroll position on scroll
-    let scrollPosition = 0;
-    window.addEventListener('scroll', function() {
-        scrollPosition = window.pageYOffset;
-        sessionStorage.setItem('scrollPosition', scrollPosition);
-    });
-
-    // Restore scroll position after re-render
-    document.addEventListener('DOMContentLoaded', function() {
-        const savedPosition = sessionStorage.getItem('scrollPosition');
-        if (savedPosition) {
-            setTimeout(function() {
-                window.scrollTo(0, parseFloat(savedPosition));
-            }, 100);
-        }
-    });
-
-    // Restore scroll position on widget interaction
-    const observer = new MutationObserver(function() {
-        const savedPosition = sessionStorage.getItem('scrollPosition');
-        if (savedPosition) {
-            setTimeout(function() {
-                window.scrollTo(0, parseFloat(savedPosition));
-            }, 100);
-        }
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
-    </script>
+    <div style="display: flex; align-items: center; gap: 5px;">
+        <img src="https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/logo.png" style="width: 200px;">
+        <h1>PowerPedal™ Test Results Dashboard</h1>
+    </div>
 """, unsafe_allow_html=True)
 
-# Cache the CSV loading with no DataFrame hashing
-@st.cache_data(hash_funcs={pd.DataFrame: lambda _: None})
-def load_data():
+# Cache the CSV loading with cache-busting
+@st.cache_data(hash_funcs={pd.DataFrame: lambda _: None}, ttl=300)  # Cache expires after 5 minutes
+def load_data(_cache_buster):
     csv_url = "https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/powerpedal_test_results.csv"
     try:
         df = pd.read_csv(csv_url)
@@ -71,57 +47,28 @@ def simple_downsample(df, max_points):
     df_downsampled = df.iloc[::step].copy()
     return df_downsampled
 
-# Load data
+# Load data with cache-busting
 with st.spinner("Loading data (this may take a moment for large datasets)..."):
-    df = load_data()
-
-# Display logo and title in a container
-with st.container():
-    st.markdown("""
-        <div style="display: flex; align-items: center; gap: 10px;">
-            <img src="https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/logo.png" 
-                 style="width: 200px;" 
-                 onerror="this.src='https://via.placeholder.com/200x50?text=Logo+Not+Found';">
-            <h1>PowerPedal™ Test Results Dashboard</h1>
-        </div>
-    """, unsafe_allow_html=True)
-
-# Initialize session state for filters if not already set
-if 'show_full' not in st.session_state:
-    st.session_state.show_full = False
-if 'time_range' not in st.session_state:
-    st.session_state.time_range = None
-if 'downsample_factor' not in st.session_state:
-    st.session_state.downsample_factor = 50
-if 'show_rider_power' not in st.session_state:
-    st.session_state.show_rider_power = True
-if 'show_battery_power' not in st.session_state:
-    st.session_state.show_battery_power = True
-if 'y_scale_option' not in st.session_state:
-    st.session_state.y_scale_option = "1x"
-if 'x_scale_option' not in st.session_state:
-    st.session_state.x_scale_option = "1x"
+    cache_buster = str(time.time())  # Unique timestamp to bust cache
+    df = load_data(cache_buster)
 
 # Sidebar for interactivity
 st.sidebar.header("Filter Options")
 st.sidebar.markdown("Adjust the time range, select metrics, and control display options.")
 
 # Full data view toggle
-show_full = st.sidebar.checkbox("Show Full Dataset", value=st.session_state.show_full, key="show_full")
+show_full = st.sidebar.checkbox("Show Full Dataset", value=False, key="show_full")
 
 # Time range slider (only shown if not viewing full dataset)
 if not df.empty:
     min_time, max_time = int(df["Time"].min()), int(df["Time"].max())
     default_range = (max(min_time, max_time - 100), max_time) if max_time - min_time > 100 else (min_time, max_time)
-    if st.session_state.time_range is None or not (min_time <= st.session_state.time_range[0] <= st.session_state.time_range[1] <= max_time):
-        st.session_state.time_range = default_range
     time_range = st.sidebar.slider(
         "Select Time Range (seconds)",
         min_time,
         max_time,
-        st.session_state.time_range,
+        default_range,
         step=1,
-        key="time_range_slider",
         help="Slide to explore different time periods in the dataset.",
         disabled=show_full
     )
@@ -131,32 +78,35 @@ downsample_factor = st.sidebar.slider(
     "Downsampling Factor (Higher = Less Clutter)",
     1,
     100,
-    st.session_state.downsample_factor,
+    50,
     step=1,
-    key="downsample_factor_slider",
     help="Higher values reduce the number of points displayed, making the graph less cluttered."
 )
 
+# Smoothing (moving average)
+smoothing = st.sidebar.checkbox("Apply Smoothing (Moving Average)", value=True)
+window_size = st.sidebar.slider(
+    "Smoothing Window Size",
+    3,
+    21,
+    5,
+    step=2,
+    help="Larger window sizes create smoother lines but may reduce detail."
+) if smoothing else 1
+
 # Metric selection
-show_rider_power = st.sidebar.checkbox("Show Rider Power", value=st.session_state.show_rider_power, key="rider_power_checkbox")
-show_battery_power = st.sidebar.checkbox("Show Battery Power", value=st.session_state.show_battery_power, key="battery_power_checkbox")
+show_rider_power = st.sidebar.checkbox("Show Rider Power", value=True)
+show_battery_power = st.sidebar.checkbox("Show Battery Power", value=True)
 
-# X/Y-axis scale selectors
-y_scale_option = st.sidebar.selectbox(
-    "Select Y-Axis Scale Factor",
-    ["0.25x", "0.5x", "1x", "2x", "4x"],
-    index=["0.25x", "0.5x", "1x", "2x", "4x"].index(st.session_state.y_scale_option),
-    key="y_scale_selectbox"
+# Zoom slider (replaces X-axis scale factor)
+zoom_factor = st.sidebar.slider(
+    "Zoom (Time Axis)",
+    0.1,
+    1.0,
+    1.0,
+    step=0.1,
+    help="Adjust to zoom in on the time axis (smaller values show a narrower time range)."
 )
-y_scale_factor = {"0.25x": 0.25, "0.5x": 0.5, "1x": 1.0, "2x": 2.0, "4x": 4.0}[y_scale_option]
-
-x_scale_option = st.sidebar.selectbox(
-    "Select Time (X-Axis) Scale Factor",
-    ["0.25x", "0.5x", "1x", "2x", "4x"],
-    index=["0.25x", "0.5x", "1x", "2x", "4x"].index(st.session_state.x_scale_option),
-    key="x_scale_selectbox"
-)
-x_scale_factor = {"0.25x": 0.25, "0.5x": 0.5, "1x": 1.0, "2x": 2.0, "4x": 4.0}[x_scale_option]
 
 # Filter data based on time range or full view
 if not df.empty:
@@ -165,9 +115,13 @@ if not df.empty:
         x_range = [df["Time"].min(), df["Time"].max()]
     else:
         df_filtered = df[(df["Time"] >= time_range[0]) & (df["Time"] <= time_range[1])]
-        x_range = [time_range[0] / x_scale_factor, time_range[1] * x_scale_factor]
+        # Apply zoom factor to adjust the visible time range
+        time_span = time_range[1] - time_range[0]
+        zoomed_span = time_span * zoom_factor
+        center_time = (time_range[0] + time_range[1]) / 2
+        x_range = [center_time - zoomed_span / 2, center_time + zoomed_span / 2]
 
-    # Create a copy for graphing (to be downsampled)
+    # Create a copy for graphing (to be downsampled and smoothed)
     df_graph = df_filtered.copy()
 
     # Downsampling for graph
@@ -175,19 +129,28 @@ if not df.empty:
     if len(df_graph) > max_points:
         df_graph = simple_downsample(df_graph, max_points)
 
-# Metrics section (calculated on df_filtered, before downsampling)
-with st.container():
+    # Apply smoothing for graph if enabled
+    if smoothing and not df_graph.empty:
+        df_graph["Battery Power"] = df_graph["Battery Power"].rolling(window=window_size, center=True, min_periods=1).mean()
+        df_graph["Rider Power"] = df_graph["Rider Power"].rolling(window=window_size, center=True, min_periods=1).mean()
+        df_graph["Speed"] = df_graph["Speed"].rolling(window=window_size, center=True, min_periods=1).mean()
+        df_graph = df_graph.interpolate(method="linear").fillna(method="ffill").fillna(method="bfill")
+
+# Placeholders for graph and metrics
+placeholder_metrics = st.empty()
+placeholder_graph = st.empty()
+
+# Metrics in a container (calculated on df_filtered, before downsampling/smoothing)
+with placeholder_metrics.container():
     st.markdown("### Key Metrics")
-    col1, col2, col3 = st.columns([1, 1, 1])
+    col1, col2 = st.columns([1, 1])
     with col1:
         st.metric("Max Battery Power", f"{df_filtered['Battery Power'].max():.2f} W" if not df_filtered.empty else "N/A")
     with col2:
         st.metric("Max Rider Power", f"{df_filtered['Rider Power'].max():.2f} W" if not df_filtered.empty else "N/A")
-    with col3:
-        st.metric("Average Speed", f"{df_filtered['Speed'].mean():.2f} km/h" if not df_filtered.empty else "N/A")
 
-# Main Graph: Power vs. Time (using downsampled df_graph)
-with st.container(height=600):
+# Main Graph: Power vs. Time (using smoothed df_graph)
+with placeholder_graph.container():
     st.markdown("### Power vs. Time")
     fig_power = go.Figure()
     if show_battery_power and not df_graph.empty:
@@ -214,7 +177,7 @@ with st.container(height=600):
                     df_graph["Rider Power"].max() if show_rider_power and not df_graph.empty else 0)
     power_min = min(df_graph["Battery Power"].min() if show_battery_power and not df_graph.empty else float('inf'),
                     df_graph["Rider Power"].min() if show_rider_power and not df_graph.empty else float('inf'))
-    y_range = [min(0, power_min / y_scale_factor), max(150, power_max * 1.3 * y_scale_factor)] if power_max > 0 else [0, 150]
+    y_range = [min(0, power_min * 0.9), max(150, power_max * 1.3)] if power_max > 0 else [0, 150]  # Fixed Y-axis scaling
     fig_power.update_layout(
         title="Power vs. Time",
         xaxis_title="Time (seconds)",
