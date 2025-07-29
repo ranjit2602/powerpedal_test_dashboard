@@ -3,14 +3,6 @@ import pandas as pd
 import plotly.graph_objs as go
 import numpy as np
 
-# Try importing LTTB, fallback to max/min sampling if not available
-try:
-    import lttb
-    LTTB_AVAILABLE = True
-except ImportError:
-    LTTB_AVAILABLE = False
-    st.warning("LTTB library not installed. Using max/min sampling instead. Install with `pip install lttb` for better results.")
-
 # Set page config with logo
 st.set_page_config(
     page_title="PowerPedal Dashboard",
@@ -46,8 +38,8 @@ def load_data():
         st.error(f"Error reading CSV: {e}")
         return pd.DataFrame()
 
-# Custom max/min sampling function
-def max_min_sampling(df, max_points):
+# Average sampling function for smooth curves
+def average_sampling(df, max_points):
     bin_size = len(df) // max_points + 1
     sampled_data = []
     for i in range(0, len(df), bin_size):
@@ -55,32 +47,11 @@ def max_min_sampling(df, max_points):
         if not bin_data.empty:
             sampled_data.append({
                 "Time": bin_data["Time"].mean(),
-                "Battery Power": bin_data["Battery Power"].max(),
-                "Rider Power": bin_data["Rider Power"].max(),
+                "Battery Power": bin_data["Battery Power"].mean(),
+                "Rider Power": bin_data["Rider Power"].mean(),
                 "Speed": bin_data["Speed"].mean()
             })
     return pd.DataFrame(sampled_data)
-
-# LTTB downsampling for multiple columns
-def lttb_downsample_multicolumn(df, max_points, columns, time_col="Time"):
-    if len(df) <= max_points:
-        return df
-    sampled_dfs = []
-    for col in columns:
-        try:
-            data = np.array([df[time_col], df[col]]).T
-            sampled = lttb.downsample(data, n_out=max_points)
-            sampled_df = pd.DataFrame(sampled, columns=[time_col, col])
-            sampled_dfs.append(sampled_df)
-        except Exception as e:
-            st.warning(f"LTTB failed for {col}: {e}. Using max/min sampling.")
-            return max_min_sampling(df, max_points)
-    
-    result = sampled_dfs[0]
-    for i in range(1, len(sampled_dfs)):
-        result = result.merge(sampled_dfs[i], on=time_col, how="outer")
-    result = result.interpolate(method="linear").fillna(method="ffill").fillna(method="bfill")
-    return result
 
 # Load data
 with st.spinner("Loading data (this may take a moment for large datasets)..."):
@@ -158,10 +129,7 @@ if not df.empty:
     # Downsampling
     max_points = max(50, len(df_filtered) // downsample_factor)
     if len(df_filtered) > max_points:
-        if LTTB_AVAILABLE:
-            df_filtered = lttb_downsample_multicolumn(df_filtered, max_points, ["Battery Power", "Rider Power", "Speed"])
-        else:
-            df_filtered = max_min_sampling(df_filtered, max_points)
+        df_filtered = average_sampling(df_filtered, max_points)
 
     # Apply smoothing if enabled
     if smoothing and not df_filtered.empty:
@@ -212,7 +180,7 @@ if not df.empty:
                         df_filtered["Rider Power"].max() if show_rider_power and not df_filtered.empty else 0)
         power_min = min(df_filtered["Battery Power"].min() if show_battery_power and not df_filtered.empty else float('inf'),
                         df_filtered["Rider Power"].min() if show_rider_power and not df_filtered.empty else float('inf'))
-        # Increased y-axis range for more headroom
+        # Y-axis range with 30% headroom
         y_range = [min(0, power_min / y_scale_factor), max(150, power_max * 1.3 * y_scale_factor)] if power_max > 0 else [0, 150]
         fig_power.update_layout(
             title="Power vs. Time",
@@ -262,10 +230,10 @@ if not df.empty:
             margin-right: 0 !important;
         }
         /* Desktop header alignment */
-        div[data-testid="stHorizontalBlock"] > div {
+        .stMarkdown div {
             display: flex !important;
             align-items: center !important;
-            gap: 10px !important;
+            gap: 5px !important;
         }
         @media (max-width: 600px) {
             .stPlotlyChart {
@@ -289,15 +257,15 @@ if not df.empty:
             h1 {
                 font-size: 20px !important;
             }
-            .stImage img {
+            .stMarkdown div img {
                 width: 80px !important;
             }
             /* Mobile header alignment */
-            div[data-testid="stHorizontalBlock"] > div {
+            .stMarkdown div {
                 display: flex !important;
                 flex-direction: row !important;
                 align-items: center !important;
-                gap: 10px !important;
+                gap: 5px !important;
             }
             .legend text {
                 font-size: 10px !important;
