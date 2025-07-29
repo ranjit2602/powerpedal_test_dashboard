@@ -97,8 +97,10 @@ if 'show_rider_power' not in st.session_state:
     st.session_state.show_rider_power = True
 if 'show_battery_power' not in st.session_state:
     st.session_state.show_battery_power = True
-if 'x_zoom' not in st.session_state:
-    st.session_state.x_zoom = 1.0
+if 'y_scale_option' not in st.session_state:
+    st.session_state.y_scale_option = "1x"
+if 'x_scale_option' not in st.session_state:
+    st.session_state.x_scale_option = "1x"
 
 # Sidebar for interactivity
 st.sidebar.header("Filter Options")
@@ -139,25 +141,31 @@ downsample_factor = st.sidebar.slider(
 show_rider_power = st.sidebar.checkbox("Show Rider Power", value=st.session_state.show_rider_power, key="rider_power_checkbox")
 show_battery_power = st.sidebar.checkbox("Show Battery Power", value=st.session_state.show_battery_power, key="battery_power_checkbox")
 
-# X-axis zoom slider
-x_zoom = st.sidebar.slider(
-    "Zoom (X-Axis)",
-    min_value=0.1,
-    max_value=1.0,
-    value=st.session_state.x_zoom,
-    step=0.1,
-    key="x_zoom_slider",
-    help="Lower values zoom in on the time axis, showing a narrower time range."
+# X/Y-axis scale selectors
+y_scale_option = st.sidebar.selectbox(
+    "Select Y-Axis Scale Factor",
+    ["0.25x", "0.5x", "1x", "2x", "4x"],
+    index=["0.25x", "0.5x", "1x", "2x", "4x"].index(st.session_state.y_scale_option),
+    key="y_scale_selectbox"
 )
+y_scale_factor = {"0.25x": 0.25, "0.5x": 0.5, "1x": 1.0, "2x": 2.0, "4x": 4.0}[y_scale_option]
+
+x_scale_option = st.sidebar.selectbox(
+    "Select Time (X-Axis) Scale Factor",
+    ["0.25x", "0.5x", "1x", "2x", "4x"],
+    index=["0.25x", "0.5x", "1x", "2x", "4x"].index(st.session_state.x_scale_option),
+    key="x_scale_selectbox"
+)
+x_scale_factor = {"0.25x": 0.25, "0.5x": 0.5, "1x": 1.0, "2x": 2.0, "4x": 4.0}[x_scale_option]
 
 # Filter data based on time range or full view
 if not df.empty:
     if show_full:
         df_filtered = df.copy()
-        base_range = [df["Time"].min(), df["Time"].max()]
+        x_range = [df["Time"].min(), df["Time"].max()]
     else:
         df_filtered = df[(df["Time"] >= time_range[0]) & (df["Time"] <= time_range[1])]
-        base_range = [time_range[0], time_range[1]]
+        x_range = [time_range[0] / x_scale_factor, time_range[1] * x_scale_factor]
 
     # Create a copy for graphing (to be downsampled)
     df_graph = df_filtered.copy()
@@ -166,15 +174,6 @@ if not df.empty:
     max_points = max(50, len(df_graph) // downsample_factor)
     if len(df_graph) > max_points:
         df_graph = simple_downsample(df_graph, max_points)
-
-    # Calculate X-axis range with zoom factor, ensuring it stays within data bounds
-    range_width = base_range[1] - base_range[0]
-    x_range_min = max(min_time, base_range[0] - (range_width * (x_zoom - 1) / 2))
-    x_range_max = min(max_time, base_range[1] + (range_width * (x_zoom - 1) / 2))
-    x_range = [x_range_min, x_range_max]
-
-# Debug output for X-axis zoom
-st.write(f"Debug: X-axis zoom: {x_zoom:.2f}x, X-axis range: {x_range[0]:.2f}s to {x_range[1]:.2f}s")
 
 # Metrics section (calculated on df_filtered, before downsampling)
 with st.container():
@@ -215,14 +214,14 @@ with st.container(height=600):
                     df_graph["Rider Power"].max() if show_rider_power and not df_graph.empty else 0)
     power_min = min(df_graph["Battery Power"].min() if show_battery_power and not df_graph.empty else float('inf'),
                     df_graph["Rider Power"].min() if show_rider_power and not df_graph.empty else float('inf'))
-    y_range = [min(0, power_min * 1.1), max(150, power_max * 1.3)] if power_max > 0 else [0, 150]
+    y_range = [min(0, power_min / y_scale_factor), max(150, power_max * 1.3 * y_scale_factor)] if power_max > 0 else [0, 150]
     fig_power.update_layout(
         title="Power vs. Time",
         xaxis_title="Time (seconds)",
         yaxis_title="Power (W)",
-        xaxis=dict(range=x_range),
-        yaxis=dict(range=y_range),
-        dragmode="pan",
+        xaxis=dict(range=x_range, fixedrange=True),
+        yaxis=dict(range=y_range, fixedrange=True),
+        dragmode=False,
         hovermode="closest",
         template="plotly_white",
         height=600,
@@ -240,7 +239,7 @@ with st.container(height=600):
         fig_power,
         use_container_width=True,
         config={
-            'modeBarButtons': [['toImage', 'pan2d', 'zoom2d']],
+            'modeBarButtons': [['toImage']],
             'displayModeBar': True,
             'displaylogo': False,
             'showTips': False,
