@@ -70,12 +70,10 @@ with st.spinner("Loading data (this may take a moment for large datasets)..."):
     cache_buster = str(time.time())
     df = load_data(cache_buster)
 
-# Set time range to first half of dataset scale after loading data
+# Set time range to full dataset after loading data
 if not df.empty and "initialized_time_range" not in st.session_state:
     min_time, max_time = int(df["Time"].min()), int(df["Time"].max())
-    time_span = max_time - min_time
-    half_span = time_span // 2
-    st.session_state.time_range = (min_time, min_time + half_span)
+    st.session_state.time_range = (min_time, max_time)  # Set to full dataset range
     st.session_state.initialized_time_range = True
 
 # Sidebar for interactivity
@@ -97,7 +95,7 @@ if not df.empty:
             "Start Time (ms)",
             min_value=min_time,
             max_value=max_time,
-            value=st.session_state.time_range[0],
+            value=st.session_state.time_range[0] if not show_full else min_time,
             step=1,
             key="start_time_input",
             help="Enter the start time in milliseconds."
@@ -107,7 +105,7 @@ if not df.empty:
             "End Time (ms)",
             min_value=min_time,
             max_value=max_time,
-            value=st.session_state.time_range[1],
+            value=st.session_state.time_range[1] if not show_full else max_time,
             step=1,
             key="end_time_input",
             help="Enter the end time in milliseconds."
@@ -122,7 +120,7 @@ if not df.empty:
         st.rerun()
 
     # Update session state if number inputs change
-    if (start_time, end_time) != st.session_state.time_range:
+    if (start_time, end_time) != st.session_state.time_range and not show_full:
         st.session_state.time_range = (start_time, end_time)
         st.rerun()
 
@@ -131,7 +129,7 @@ if not df.empty:
         "Select Time Range (ms)",
         min_time,
         max_time,
-        st.session_state.time_range,
+        (min_time, max_time) if show_full else st.session_state.time_range,
         step=1,
         key="time_range_slider",
         help="Slide or type to explore time periods.",
@@ -151,7 +149,7 @@ downsample_factor = st.sidebar.slider(
     "Downsampling Factor (Higher = Less Clutter)",
     0,
     50,
-    st.session_state.downsample_factor,
+    value=st.session_state.downsample_factor,  # Use session state value explicitly
     step=1,
     key="downsample_factor",
     help="Higher values reduce points for large datasets (e.g., 256 Hz for 2 hours)."
@@ -174,7 +172,7 @@ window_size = st.sidebar.slider(
 show_rider_power = st.sidebar.checkbox("Show Rider Power", value=True, key="show_rider_power")
 show_battery_power = st.sidebar.checkbox("Show Battery Power", value=True, key="show_battery_power")
 
-# Zoom slider (higher value zooms in)
+# Zoom slider
 zoom_factor = st.sidebar.slider(
     "Zoom (Time Axis)",
     0.1,
@@ -291,7 +289,7 @@ with st.expander("Power vs. Time Graph", expanded=True):
             y=1.1,
             xanchor="center",
             x=0.5,
-            font=dict(size=14)  # Increased legend font size
+            font=dict(size=14)
         )
     )
     st.plotly_chart(
@@ -350,12 +348,12 @@ st.markdown("""
         color: #000000;
     }
     .metric-box.battery {
-        background-color: #fff75e; /* Dark blue for Battery Power */
-        border: 2px solid #fff75e; /* Lighter blue border */
+        background-color: #fff75e;
+        border: 2px solid #fff75e;
     }
     .metric-box.rider {
-        background-color: #90e0ef; /* Dark red for Rider Power */
-        border: 2px solid #90e0ef; /* Lighter red border */
+        background-color: #90e0ef;
+        border: 2px solid #90e0ef;
     }
     div[data-testid="stHorizontalBlock"] > div {
         display: flex !important;
@@ -408,7 +406,7 @@ st.markdown("""
             gap: 10px !important;
         }
         .legend text {
-            font-size: 12px !important; /* Slightly smaller legend for mobile */
+            font-size: 12px !important;
         }
     }
     </style>
