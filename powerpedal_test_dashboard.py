@@ -147,9 +147,9 @@ else:
 # Downsampling factor
 downsample_factor = st.sidebar.slider(
     "Downsampling Factor (Higher = Less Clutter)",
-    0,
-    50,
-    value=st.session_state.downsample_factor,  # Use session state value explicitly
+    min_value=0,
+    max_value=50,
+    value=st.session_state.downsample_factor,  # Explicitly use session state value
     step=1,
     key="downsample_factor",
     help="Higher values reduce points for large datasets (e.g., 256 Hz for 2 hours)."
