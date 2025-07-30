@@ -20,23 +20,30 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
+# List of CSV files (rides)
+csv_files = {
+    "10-degree Slope": "https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/10-degree_Slope.CSV",
+    "Straight-Flat": "https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/Straight-Flat.csv",
+    "Zero to 25": "https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/Zero_to_25.CSV",
+    "Starts and stops": "https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/Starts_and_stops.CSV"
+}
+
 # Cache the CSV loading with cache-busting
 @st.cache_data(hash_funcs={pd.DataFrame: lambda _: None}, ttl=300)
-def load_data(_cache_buster):
-    csv_url = "https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/powerpedal_test_results.csv"
+def load_data(csv_url, _cache_buster):
     try:
         df = pd.read_csv(csv_url)
         required_cols = ["Time", "Battery Power", "Rider Power", "Speed"]
         missing_cols = [col for col in required_cols if col not in df.columns]
         if missing_cols:
-            st.error(f"Missing columns: {missing_cols}. Found: {list(df.columns)}")
+            st.error(f"Missing columns in {csv_url}: {missing_cols}. Found: {list(df.columns)}")
             return pd.DataFrame()
         for col in required_cols:
             df[col] = pd.to_numeric(df[col], errors="coerce")
         df = df.dropna()
         return df
     except Exception as e:
-        st.error(f"Error reading CSV: {e}")
+        st.error(f"Error reading CSV {csv_url}: {e}")
         return pd.DataFrame()
 
 # Advanced downsampling function using averaging
@@ -57,28 +64,40 @@ def advanced_downsample(df, max_points):
 if "time_range" not in st.session_state:
     st.session_state.time_range = (0, 10000)  # Default if data is empty
 if "downsample_factor" not in st.session_state:
-    st.session_state.downsample_factor = 30
+    st.session_state.downsample_factor = 20  # Default to 20
 if "window_size" not in st.session_state:
-    st.session_state.window_size = 7
+    st.session_state.window_size = 2  # Default to 2
 if "zoom_factor" not in st.session_state:
     st.session_state.zoom_factor = 1.0
 if "smoothing" not in st.session_state:
     st.session_state.smoothing = True
-
-# Load data with cache-busting
-with st.spinner("Loading data (this may take a moment for large datasets)..."):
-    cache_buster = str(time.time())
-    df = load_data(cache_buster)
-
-# Set time range to full dataset after loading data
-if not df.empty and "initialized_time_range" not in st.session_state:
-    min_time, max_time = int(df["Time"].min()), int(df["Time"].max())
-    st.session_state.time_range = (min_time, max_time)  # Set to full dataset range
-    st.session_state.initialized_time_range = True
+if "selected_ride" not in st.session_state:
+    st.session_state.selected_ride = list(csv_files.keys())[0]  # Default to first ride
 
 # Sidebar for interactivity
 st.sidebar.header("Filter Options")
-st.sidebar.markdown("Adjust the time range, select metrics, and control display options.")
+st.sidebar.markdown("Select a ride, adjust the time range, select metrics, and control display options.")
+
+# Ride selection dropdown
+selected_ride = st.sidebar.selectbox(
+    "Select Ride",
+    list(csv_files.keys()),
+    index=list(csv_files.keys()).index(st.session_state.selected_ride) if st.session_state.selected_ride in csv_files else 0,
+    key="selected_ride",
+    help="Choose a ride to visualize its data."
+)
+
+# Load data for selected ride with cache-busting
+with st.spinner(f"Loading data for {selected_ride} (this may take a moment for large datasets)..."):
+    cache_buster = str(time.time())
+    df = load_data(csv_files[selected_ride], cache_buster)
+
+# Set time range to full dataset for selected ride
+if not df.empty and ("initialized_time_range" not in st.session_state or st.session_state.get('last_selected_ride') != selected_ride):
+    min_time, max_time = int(df["Time"].min()), int(df["Time"].max())
+    st.session_state.time_range = (min_time, max_time)  # Set to full dataset range
+    st.session_state.initialized_time_range = True
+    st.session_state.last_selected_ride = selected_ride
 
 # Full data view toggle
 show_full = st.sidebar.checkbox("Show Full Dataset", value=False, key="show_full")
@@ -149,7 +168,7 @@ downsample_factor = st.sidebar.slider(
     "Downsampling Factor (Higher = Less Clutter)",
     min_value=0,
     max_value=50,
-    value=st.session_state.downsample_factor,  # Explicitly use session state value
+    value=st.session_state.downsample_factor,  # Use session state (default 20)
     step=1,
     key="downsample_factor",
     help="Higher values reduce points for large datasets (e.g., 256 Hz for 2 hours)."
@@ -159,9 +178,9 @@ downsample_factor = st.sidebar.slider(
 smoothing = st.sidebar.checkbox("Apply Smoothing (Moving Average)", value=st.session_state.smoothing, key="smoothing")
 window_size = st.sidebar.slider(
     "Smoothing Window Size",
-    0,
-    10,
-    st.session_state.window_size,
+    min_value=0,
+    max_value=10,
+    value=st.session_state.window_size,  # Use session state (default 2)
     step=1,
     key="window_size",
     help="Larger window sizes create smoother lines but may reduce detail.",
@@ -175,9 +194,9 @@ show_battery_power = st.sidebar.checkbox("Show Battery Power", value=True, key="
 # Zoom slider
 zoom_factor = st.sidebar.slider(
     "Zoom (Time Axis)",
-    0.1,
-    2.0,
-    st.session_state.zoom_factor,
+    min_value=0.1,
+    max_value=2.0,
+    value=st.session_state.zoom_factor,
     step=0.1,
     key="zoom_factor",
     help="Increase to zoom in, decrease to zoom out."
@@ -202,25 +221,8 @@ if not df.empty:
 
     # Ensure x_range stays within dataset bounds
     x_range = [max(min_time, x_range[0]), min(max_time, x_range[1])]
-
-    # Create a copy for graphing
-    df_graph = df_filtered.copy()
-
-    # Downsampling (target ~1000 points)
-    max_points = 1000
-    if downsample_factor == 0:
-        max_points = len(df_graph)
-    else:
-        max_points = max(50, len(df_graph) // downsample_factor)
-    if len(df_graph) > max_points:
-        df_graph = advanced_downsample(df_graph, max_points)
-
-    # Apply smoothing if enabled
-    if smoothing and not df_graph.empty and window_size > 0:
-        df_graph["Battery Power"] = df_graph["Battery Power"].rolling(window=window_size, center=True, min_periods=1).mean()
-        df_graph["Rider Power"] = df_graph["Rider Power"].rolling(window=window_size, center=True, min_periods=1).mean()
-        df_graph["Speed"] = df_graph["Speed"].rolling(window=window_size, center=True, min_periods=1).mean()
-        df_graph = df_graph.interpolate(method="linear").fillna(method="ffill").fillna(method="bfill")
+else:
+    df_filtered = pd.DataFrame()  # Define empty df_filtered if df is empty
 
 # Graph and metrics in expander
 with st.expander("Power vs. Time Graph", expanded=True):
@@ -228,7 +230,7 @@ with st.expander("Power vs. Time Graph", expanded=True):
     with st.container():
         st.markdown("""
             <div class="metrics-container">
-                <h3 style='text-align: center; font-size: 24px; margin-bottom: 10px; color: #fff;'>Key Metrics</h3>
+                <h3 style='text-align: center; font-size: 24px; margin-bottom: 10px; color: #fff;'>Key Metrics for {}</h3>
                 <div style='display: flex; justify-content: center; gap: 20px;'>
                     <div class="metric-box battery">
                         Max Battery Power<br>{:.2f} W
@@ -239,12 +241,35 @@ with st.expander("Power vs. Time Graph", expanded=True):
                 </div>
             </div>
         """.format(
-            df_filtered["Battery Power"].max() if not df_filtered.empty else "N/A",
-            df_filtered["Rider Power"].max() if not df_filtered.empty else "N/A"
+            selected_ride,
+            df_filtered["Battery Power"].max() if not df_filtered.empty else 0,
+            df_filtered["Rider Power"].max() if not df_filtered.empty else 0
         ), unsafe_allow_html=True)
 
+    # Create a copy for graphing
+    if not df_filtered.empty:
+        df_graph = df_filtered.copy()
+
+        # Downsampling (target ~1000 points)
+        max_points = 1000
+        if downsample_factor == 0:
+            max_points = len(df_graph)
+        else:
+            max_points = max(50, len(df_graph) // downsample_factor)
+        if len(df_graph) > max_points:
+            df_graph = advanced_downsample(df_graph, max_points)
+
+        # Apply smoothing if enabled
+        if smoothing and not df_graph.empty and window_size > 0:
+            df_graph["Battery Power"] = df_graph["Battery Power"].rolling(window=window_size, center=True, min_periods=1).mean()
+            df_graph["Rider Power"] = df_graph["Rider Power"].rolling(window=window_size, center=True, min_periods=1).mean()
+            df_graph["Speed"] = df_graph["Speed"].rolling(window=window_size, center=True, min_periods=1).mean()
+            df_graph = df_graph.interpolate(method="linear").fillna(method="ffill").fillna(method="bfill")
+    else:
+        df_graph = pd.DataFrame()
+
     # Main Graph
-    st.markdown("<h2 style='font-size: 28px; font-weight: bold;'>Power vs. Time</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='font-size: 28px; font-weight: bold;'>Power vs. Time for {}</h2>".format(selected_ride), unsafe_allow_html=True)
     fig_power = go.Figure()
     if show_battery_power and not df_graph.empty:
         fig_power.add_trace(go.Scatter(
@@ -272,7 +297,7 @@ with st.expander("Power vs. Time Graph", expanded=True):
                     df_graph["Rider Power"].min() if show_rider_power and not df_graph.empty else float('inf'))
     y_range = [min(0, power_min * 0.9), max(150, power_max * 1.3)] if power_max > 0 else [0, 150]
     fig_power.update_layout(
-        title="Power vs. Time",
+        title=f"Power vs. Time for {selected_ride}",
         xaxis_title="Time (milliseconds)",
         yaxis_title="Power (W)",
         xaxis=dict(range=x_range, fixedrange=False),
@@ -390,6 +415,9 @@ st.markdown("""
         .stNumberInput label {
             font-size: 12px !important;
         }
+        .stSelectbox label {
+            font-size: 12px !important;
+        }
         h1 {
             font-size: 20px !important;
         }
@@ -453,4 +481,4 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 if df.empty:
-    st.warning("No data to display.")
+    st.warning(f"No data to display for {selected_ride}.")
