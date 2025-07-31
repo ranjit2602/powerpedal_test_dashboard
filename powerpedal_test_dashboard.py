@@ -16,12 +16,18 @@ def format_distance(meters):
     else:
         return f"{meters / 1000:.2f} km"
 
-# Set page config
+# Set page config with mobile-friendly settings
 st.set_page_config(
     page_title="PowerPedal Dashboard",
     page_icon="https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/logo.png",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"  # Collapse sidebar by default on mobile
+)
+
+# Add viewport meta tag for mobile responsiveness
+st.markdown(
+    '<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">',
+    unsafe_allow_html=True
 )
 
 # Display logo and title
@@ -52,8 +58,8 @@ csv_files = {
     }
 }
 
-# Data loading and processing functions (unchanged)
-@st.cache_data(hash_funcs={pd.DataFrame: lambda _: None}, ttl=300)
+# Data loading with enhanced caching
+@st.cache_data(hash_funcs={pd.DataFrame: lambda _: None}, ttl=3600)  # Increased TTL to 1 hour
 def load_data(csv_url, _cache_buster):
     try:
         df = pd.read_csv(csv_url)
@@ -70,7 +76,7 @@ def load_data(csv_url, _cache_buster):
         st.error(f"Error reading CSV {csv_url}: {e}")
         return pd.DataFrame()
 
-def advanced_downsample(df, max_points):
+def advanced_downsample(df, max_points=500):  # Reduced max_points for mobile performance
     if len(df) <= max_points:
         return df
     bin_size = len(df) // max_points + 1
@@ -141,7 +147,7 @@ if not df_pp.empty or not df_s.empty:
             min_value=min_time,
             max_value=max_time,
             value=st.session_state.time_range[0] if not show_full else min_time,
-            step=1,
+            step=100,  # Larger step for touch-friendly input
             key="start_time_input"
         )
     with col2:
@@ -150,7 +156,7 @@ if not df_pp.empty or not df_s.empty:
             min_value=min_time,
             max_value=max_time,
             value=st.session_state.time_range[1] if not show_full else max_time,
-            step=1,
+            step=100,
             key="end_time_input"
         )
 
@@ -161,20 +167,18 @@ if not df_pp.empty or not df_s.empty:
         st.session_state.time_range = (start_time, end_time)
         st.rerun()
 
-    if (start_time, end_time) != st.session_state.time_range and not show_full:
-        st.session_state.time_range = (start_time, end_time)
-        st.rerun()
-
+    # Debounce slider updates to prevent excessive reruns
     time_range = st.sidebar.slider(
         "Select Time Range (ms)",
         min_time,
         max_time,
         st.session_state.time_range,
-        step=1,
+        step=100,
         key="time_range_slider",
         disabled=show_full
     )
 
+    # Update session state only if the change is significant
     if time_range != st.session_state.time_range and not show_full:
         st.session_state.time_range = time_range
         st.rerun()
@@ -231,7 +235,7 @@ else:
 # Prepare data for graphing
 if not df_filtered_pp.empty:
     df_graph_pp = df_filtered_pp.copy()
-    max_points = max(50, len(df_graph_pp) // downsample_factor) if downsample_factor > 0 else len(df_graph_pp)
+    max_points = max(50, len(df_graph_pp) // (downsample_factor + 1))  # Adjusted for mobile
     if len(df_graph_pp) > max_points:
         df_graph_pp = advanced_downsample(df_graph_pp, max_points)
     if smoothing and not df_graph_pp.empty and window_size > 0:
@@ -244,7 +248,7 @@ else:
 
 if not df_filtered_s.empty:
     df_graph_s = df_filtered_s.copy()
-    max_points = max(50, len(df_graph_s) // downsample_factor) if downsample_factor > 0 else len(df_graph_s)
+    max_points = max(50, len(df_graph_s) // (downsample_factor + 1))
     if len(df_graph_s) > max_points:
         df_graph_s = advanced_downsample(df_graph_s, max_points)
     if smoothing and not df_graph_s.empty and window_size > 0:
@@ -257,7 +261,7 @@ else:
 
 # Graph and metrics
 with st.expander("Power vs. Time Comparison", expanded=True):
-    # Calculate metrics (unchanged)
+    # Calculate metrics
     if not df_filtered_pp.empty:
         time_hours_pp = df_filtered_pp["Time"] / 3600000
         energy_battery_pp = np.trapz(df_filtered_pp["Battery Power"], time_hours_pp)
@@ -358,12 +362,12 @@ with st.expander("Power vs. Time Comparison", expanded=True):
             title=f"PowerPedal: {selected_ride}",
             xaxis_title="Time (milliseconds)",
             yaxis_title="Power (W)",
-            xaxis=dict(range=x_range, fixedrange=False),  # Allow horizontal panning
-            yaxis=dict(range=y_range_pp, fixedrange=True),  # Prevent vertical panning
+            xaxis=dict(range=x_range, fixedrange=False),
+            yaxis=dict(range=y_range_pp, fixedrange=True),
             dragmode="pan",
             hovermode="closest",
             template="plotly_white",
-            height=None,
+            height=400,  # Fixed height for mobile
             margin=dict(t=50, b=80, l=5, r=5),
             autosize=True,
             legend=dict(
@@ -372,7 +376,7 @@ with st.expander("Power vs. Time Comparison", expanded=True):
                 y=-0.2,
                 xanchor="center",
                 x=0.5,
-                font=dict(size=12)
+                font=dict(size=10)  # Smaller font for mobile
             )
         )
         st.plotly_chart(
@@ -383,15 +387,15 @@ with st.expander("Power vs. Time Comparison", expanded=True):
                 'displayModeBar': True,
                 'displaylogo': False,
                 'responsive': True,
-                'scrollZoom': False,  # Disable scroll zoom
+                'scrollZoom': False,
                 'toImageButtonOptions': {
                     'format': 'png',
                     'filename': 'PowerPedal_Graph',
-                    'height': 600,
-                    'width': 800,
+                    'height': 400,
+                    'width': 600,
                     'scale': 1
                 },
-                'pan2d': True  # Explicitly enable 2D panning (horizontal only due to yaxis fixedrange)
+                'pan2d': True
             },
             key="power_graph_pp"
         )
@@ -429,12 +433,12 @@ with st.expander("Power vs. Time Comparison", expanded=True):
             title=f"Stock: {selected_ride}",
             xaxis_title="Time (milliseconds)",
             yaxis_title="Power (W)",
-            xaxis=dict(range=x_range, fixedrange=False),  # Allow horizontal panning
-            yaxis=dict(range=y_range_s, fixedrange=True),  # Prevent vertical panning
+            xaxis=dict(range=x_range, fixedrange=False),
+            yaxis=dict(range=y_range_s, fixedrange=True),
             dragmode="pan",
             hovermode="closest",
             template="plotly_white",
-            height=None,
+            height=400,
             margin=dict(t=50, b=80, l=5, r=5),
             autosize=True,
             legend=dict(
@@ -443,7 +447,7 @@ with st.expander("Power vs. Time Comparison", expanded=True):
                 y=-0.2,
                 xanchor="center",
                 x=0.5,
-                font=dict(size=12)
+                font=dict(size=10)
             )
         )
         st.plotly_chart(
@@ -454,26 +458,30 @@ with st.expander("Power vs. Time Comparison", expanded=True):
                 'displayModeBar': True,
                 'displaylogo': False,
                 'responsive': True,
-                'scrollZoom': False,  # Disable scroll zoom
+                'scrollZoom': False,
                 'toImageButtonOptions': {
                     'format': 'png',
                     'filename': 'Stock_Graph',
-                    'height': 600,
-                    'width': 800,
+                    'height': 400,
+                    'width': 600,
                     'scale': 1
                 },
-                'pan2d': True  # Explicitly enable 2D panning (horizontal only due to yaxis fixedrange)
+                'pan2d': True
             },
             key="power_graph_s"
         )
 
-# CSS (unchanged from previous version)
+# Updated CSS for mobile and full-screen compatibility
 st.markdown("""
     <style>
-    .main .block-container {
+    /* Ensure full viewport fit */
+    html, body, .main, .block-container {
+        margin: 0 !important;
         padding: 0.5rem !important;
-        max-width: 100% !important;
+        width: 100% !important;
+        max-width: 100vw !important;
         overflow-x: hidden !important;
+        box-sizing: border-box !important;
     }
     .title-container {
         display: flex;
@@ -483,21 +491,23 @@ st.markdown("""
         gap: 10px;
         margin: 10px 0;
         flex-wrap: wrap;
+        width: 100%;
     }
     .title-container .logo {
-        width: 100px;
+        width: 80px;
         height: auto;
     }
     .title-container h1 {
-        font-size: 24px;
+        font-size: 20px;
         margin: 0;
         text-align: center;
     }
     .stPlotlyChart {
         width: 100% !important;
         max-width: 100vw !important;
+        height: 400px !important;
         margin: 0 auto !important;
-        overflow: visible !important;
+        overflow: hidden !important;
         box-sizing: border-box !important;
         margin-bottom: 20px !important;
     }
@@ -506,13 +516,13 @@ st.markdown("""
         border-radius: 5px;
         padding: 10px;
         box-sizing: border-box !important;
+        width: 100%;
     }
     .stColumns {
-        padding: 0 !important;
-        margin: 0 !important;
         display: flex !important;
-        flex-wrap: wrap !important;
-        gap: 30px !important;
+        flex-direction: column !important;
+        gap: 20px !important;
+        width: 100% !important;
     }
     .stColumns > div {
         flex: 1 1 100% !important;
@@ -520,29 +530,31 @@ st.markdown("""
         width: 100% !important;
         max-width: 100% !important;
         box-sizing: border-box !important;
-        padding: 15px !important;
+        padding: 10px !important;
     }
     .metrics-container {
-        padding: 15px;
+        padding: 10px;
         margin-bottom: 20px;
         text-align: center;
+        width: 100%;
     }
     .metrics-container h3 {
-        font-size: 24px;
+        font-size: 20px;
         margin-bottom: 10px;
         color: #fff;
     }
     .metrics-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-        gap: 10px;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 8px;
         justify-items: center;
+        width: 100%;
     }
     .metric-box {
-        padding: 10px;
+        padding: 8px;
         border-radius: 5px;
         text-align: center;
-        font-size: 16px;
+        font-size: 14px;
         font-weight: bold;
         color: #000;
         width: 100%;
@@ -573,13 +585,13 @@ st.markdown("""
         border: 2px solid #cc6f00;
     }
     [data-testid="stSidebar"] {
+        width: 80% !important;
+        max-width: 250px !important;
         transition: transform 0.3s ease-in-out !important;
         touch-action: auto !important;
         -webkit-overflow-scrolling: touch !important;
         overscroll-behavior: contain !important;
         z-index: 1000 !important;
-        width: 80% !important;
-        max-width: 300px !important;
     }
     [data-testid="stSidebar"][aria-expanded="false"] {
         transform: translateX(-100%) !important;
@@ -591,57 +603,17 @@ st.markdown("""
         position: fixed;
         left: 0;
         top: 0;
-        width: 50px;
+        width: 30px;
         height: 100%;
         background: transparent;
         z-index: 1001;
     }
+    /* Mobile-specific styles */
     @media (max-width: 768px) {
         .title-container {
             flex-direction: column;
             gap: 5px;
         }
-        .title-container .logo {
-            width: 80px;
-        }
-        .title-container h1 {
-            font-size: 20px;
-        }
-        .metrics-container h3 {
-            font-size: 20px;
-        }
-        .metrics-grid {
-            grid-template-columns: 1fr;
-        }
-        .metric-box {
-            font-size: 14px;
-            padding: 8px;
-        }
-        .stPlotlyChart {
-            height: 40vh !important;
-            width: 100% !important;
-            margin-bottom: 40px !important;
-        }
-        .st-expander {
-            min-height: auto !important;
-        }
-        .stSlider label, .stCheckbox label, .stNumberInput label, .stSelectbox label {
-            font-size: 12px !important;
-        }
-        h2 {
-            font-size: 18px !important;
-            margin-bottom: 15px !important;
-        }
-        .stColumns {
-            flex-direction: column !important;
-            gap: 40px !important;
-        }
-        .stColumns > div {
-            width: 100% !important;
-            padding: 20px !important;
-        }
-    }
-    @media (max-width: 480px) {
         .title-container .logo {
             width: 60px;
         }
@@ -651,19 +623,62 @@ st.markdown("""
         .metrics-container h3 {
             font-size: 16px;
         }
+        .metrics-grid {
+            grid-template-columns: 1fr;
+        }
         .metric-box {
             font-size: 12px;
             padding: 6px;
         }
         .stPlotlyChart {
-            height: 35vh !important;
-            margin-bottom: 30px !important;
+            height: 300px !important;
+            margin-bottom: 20px !important;
+        }
+        .stSlider label, .stCheckbox label, .stNumberInput label, .stSelectbox label {
+            font-size: 12px !important;
+        }
+        h2 {
+            font-size: 16px !important;
+            margin-bottom: 10px !important;
+        }
+        .stColumns {
+            flex-direction: column !important;
+            gap: 15px !important;
+        }
+        /* Ensure touch-friendly inputs */
+        input, select, .stSlider > div > div > div {
+            touch-action: manipulation !important;
+            -webkit-appearance: none !important;
+        }
+    }
+    @media (max-width: 480px) {
+        .title-container .logo {
+            width: 50px;
+        }
+        .title-container h1 {
+            font-size: 14px;
+        }
+        .metrics-container h3 {
+            font-size: 14px;
+        }
+        .metric-box {
+            font-size: 10px;
+            padding: 5px;
+        }
+        .stPlotlyChart {
+            height: 250px !important;
+        }
+    }
+    /* Handle full-screen and orientation changes */
+    @media (orientation: landscape) {
+        .stPlotlyChart {
+            height: 350px !important;
         }
     }
     </style>
 """, unsafe_allow_html=True)
 
-# JavaScript (unchanged from previous version)
+# Updated JavaScript for improved mobile and full-screen handling
 st.markdown("""
     <script>
     document.addEventListener("DOMContentLoaded", function() {
@@ -675,9 +690,9 @@ st.markdown("""
         let touchEndX = 0;
         let isSwiping = false;
 
-        // Initialize sidebar state
+        // Initialize sidebar state (collapsed on mobile)
         if (window.innerWidth <= 768 && sidebar && sidebarToggle) {
-            if (sidebar.getAttribute('aria-expanded') !== 'true') {
+            if (sidebar.getAttribute('aria-expanded') === 'true') {
                 sidebarToggle.click();
             }
         }
@@ -694,9 +709,9 @@ st.markdown("""
         swipeArea.className = 'swipe-area';
         document.body.appendChild(swipeArea);
 
-        // Improved swipe handling
+        // Touch event handlers
         function handleTouchStart(e) {
-            if (e.target.closest('.swipe-area') || e.target.closest('[data-testid="stSidebar"]')) {
+            if (e.target.closest('.swipe-area')) {  // Only trigger swipe on swipe-area
                 touchStartX = e.changedTouches[0].screenX;
                 isSwiping = true;
             }
@@ -705,7 +720,7 @@ st.markdown("""
         function handleTouchMove(e) {
             if (isSwiping) {
                 touchEndX = e.changedTouches[0].screenX;
-                e.preventDefault(); // Prevent scrolling during swipe
+                e.preventDefault(); // Prevent default scrolling during swipe
             }
         }
 
@@ -729,18 +744,34 @@ st.markdown("""
             }
         }
 
-        // Add event listeners to both swipe area and sidebar
-        [swipeArea, sidebar].forEach(element => {
-            if (element) {
-                element.addEventListener('touchstart', handleTouchStart, { passive: false });
-                element.addEventListener('touchmove', handleTouchMove, { passive: false });
-                element.addEventListener('touchend', handleTouchEnd, { passive: false });
-            }
+        // Add touch event listeners only to swipe area
+        swipeArea.addEventListener('touchstart', handleTouchStart, { passive: false });
+        swipeArea.addEventListener('touchmove', handleTouchMove, { passive: false });
+        swipeArea.addEventListener('touchend', handleTouchEnd, { passive: false });
+
+        // Handle orientation and full-screen changes
+        window.addEventListener('resize', () => {
+            requestAnimationFrame(() => {
+                main.scrollTop = lastScrollPosition;
+                window.dispatchEvent(new Event('resize'));
+            });
         });
 
-        // Handle window resize
-        window.addEventListener('resize', () => {
-            window.dispatchEvent(new Event('resize'));
+        // Handle full-screen mode
+        document.addEventListener('fullscreenchange', () => {
+            requestAnimationFrame(() => {
+                main.scrollTop = lastScrollPosition;
+                document.querySelectorAll('.stPlotlyChart').forEach(chart => {
+                    chart.style.height = window.innerHeight > window.innerWidth ? '300px' : '350px';
+                });
+            });
+        });
+
+        // Prevent Plotly touch conflicts
+        document.querySelectorAll('.stPlotlyChart').forEach(chart => {
+            chart.addEventListener('touchstart', (e) => {
+                if (isSwiping) e.stopPropagation();
+            }, { passive: false });
         });
 
         // Mutation observer for scroll retention
@@ -749,7 +780,7 @@ st.markdown("""
                 main.scrollTop = lastScrollPosition;
             });
         });
-        observer.observe(main, { childList: true, subtree: true, attributes: true });
+        observer.observe(main, { childList: true, subtree: true });
     });
     </script>
 """, unsafe_allow_html=True)
