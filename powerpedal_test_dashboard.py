@@ -4,28 +4,27 @@ import plotly.graph_objs as go
 import numpy as np
 import time
 
-# Helper function to convert seconds to minutes and seconds
+# Helper functions (unchanged)
 def seconds_to_min_sec(seconds):
     minutes = int(seconds // 60)
     remaining_seconds = seconds % 60
     return f"{minutes} min {remaining_seconds:.1f} s"
 
-# Helper function to format ride distance (meters if < 1000, else kilometers)
 def format_distance(meters):
     if meters < 1000:
         return f"{meters:.0f} m"
     else:
         return f"{meters / 1000:.2f} km"
 
-# Set page config with logo and expanded sidebar
+# Set page config
 st.set_page_config(
     page_title="PowerPedal Dashboard",
     page_icon="https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/logo.png",
     layout="wide",
-    initial_sidebar_state="expanded"  # Always expanded, including mobile
+    initial_sidebar_state="expanded"
 )
 
-# Display logo and title using flexbox
+# Display logo and title
 st.markdown("""
     <div class="title-container">
         <img src="https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/logo.png" class="logo">
@@ -33,7 +32,7 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-# List of CSV files (rides with PowerPedal and Stock pairs)
+# CSV files (unchanged)
 csv_files = {
     "10-degree Slope": {
         "PowerPedal": "https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/10-degree_Slope_PP.CSV",
@@ -53,7 +52,7 @@ csv_files = {
     }
 }
 
-# Cache the CSV loading with cache-busting
+# Data loading and processing functions (unchanged)
 @st.cache_data(hash_funcs={pd.DataFrame: lambda _: None}, ttl=300)
 def load_data(csv_url, _cache_buster):
     try:
@@ -71,7 +70,6 @@ def load_data(csv_url, _cache_buster):
         st.error(f"Error reading CSV {csv_url}: {e}")
         return pd.DataFrame()
 
-# Advanced downsampling function using averaging
 def advanced_downsample(df, max_points):
     if len(df) <= max_points:
         return df
@@ -86,40 +84,36 @@ def advanced_downsample(df, max_points):
     }).reset_index(drop=True)
     return df_downsampled
 
-# Initialize session state defaults
+# Initialize session state
 if "time_range" not in st.session_state:
     st.session_state.time_range = (0, 10000)
 if "downsample_factor" not in st.session_state:
     st.session_state.downsample_factor = 20
 if "window_size" not in st.session_state:
     st.session_state.window_size = 2
-if "zoom_factor" not in st.session_state:
-    st.session_state.zoom_factor = 1.0
 if "smoothing" not in st.session_state:
     st.session_state.smoothing = True
 if "selected_ride" not in st.session_state:
     st.session_state.selected_ride = list(csv_files.keys())[0]
 
-# Sidebar for interactivity
+# Sidebar
 st.sidebar.header("Filter Options")
 st.sidebar.markdown("Select a ride, adjust the time range, select metrics, and control display options.")
 
-# Ride selection dropdown
 selected_ride = st.sidebar.selectbox(
     "Select Ride",
     list(csv_files.keys()),
     index=list(csv_files.keys()).index(st.session_state.selected_ride) if st.session_state.selected_ride in csv_files else 0,
-    key="selected_ride",
-    help="Choose a ride to compare PowerPedal and Stock systems."
+    key="selected_ride"
 )
 
-# Load data for selected ride (PowerPedal and Stock)
-with st.spinner(f"Loading data for {selected_ride} (this may take a moment for large datasets)..."):
+# Load data
+with st.spinner(f"Loading data for {selected_ride}..."):
     cache_buster = str(time.time())
     df_pp = load_data(csv_files[selected_ride]["PowerPedal"], cache_buster)
     df_s = load_data(csv_files[selected_ride]["Stock"], cache_buster)
 
-# Set time range to the maximum range across both datasets
+# Set time range
 if not df_pp.empty and not df_s.empty:
     min_time = min(int(df_pp["Time"].min()), int(df_s["Time"].min()))
     max_time = max(int(df_pp["Time"].max()), int(df_s["Time"].max()))
@@ -130,16 +124,14 @@ elif not df_s.empty:
 else:
     min_time, max_time = st.session_state.time_range
 
-# Update session state for time range if needed
 if "initialized_time_range" not in st.session_state or st.session_state.get('last_selected_ride') != selected_ride:
     st.session_state.time_range = (min_time, max_time)
     st.session_state.initialized_time_range = True
     st.session_state.last_selected_ride = selected_ride
 
-# Full data view toggle
+# Sidebar controls
 show_full = st.sidebar.checkbox("Show Full Dataset", value=False, key="show_full")
 
-# Time range input (slider and number inputs)
 if not df_pp.empty or not df_s.empty:
     st.sidebar.markdown("### Time Range (milliseconds)")
     col1, col2 = st.sidebar.columns(2)
@@ -150,8 +142,7 @@ if not df_pp.empty or not df_s.empty:
             max_value=max_time,
             value=st.session_state.time_range[0] if not show_full else min_time,
             step=1,
-            key="start_time_input",
-            help="Enter the start time in milliseconds."
+            key="start_time_input"
         )
     with col2:
         end_time = st.number_input(
@@ -160,11 +151,9 @@ if not df_pp.empty or not df_s.empty:
             max_value=max_time,
             value=st.session_state.time_range[1] if not show_full else max_time,
             step=1,
-            key="end_time_input",
-            help="Enter the end time in milliseconds."
+            key="end_time_input"
         )
 
-    # Validate and update session state
     if start_time >= end_time:
         st.sidebar.error("Start time must be less than end time.")
         start_time = max(min_time, end_time - 100)
@@ -172,12 +161,10 @@ if not df_pp.empty or not df_s.empty:
         st.session_state.time_range = (start_time, end_time)
         st.rerun()
 
-    # Update session state if number inputs change
     if (start_time, end_time) != st.session_state.time_range and not show_full:
         st.session_state.time_range = (start_time, end_time)
         st.rerun()
 
-    # Time range slider synchronized with number inputs
     time_range = st.sidebar.slider(
         "Select Time Range (ms)",
         min_time,
@@ -185,11 +172,9 @@ if not df_pp.empty or not df_s.empty:
         st.session_state.time_range,
         step=1,
         key="time_range_slider",
-        help="Slide or type to explore time periods.",
         disabled=show_full
     )
 
-    # Update session state if slider changes
     if time_range != st.session_state.time_range and not show_full:
         st.session_state.time_range = time_range
         st.rerun()
@@ -197,20 +182,16 @@ else:
     start_time, end_time = st.session_state.time_range
     time_range = st.session_state.time_range
 
-# Downsampling factor
 downsample_factor = st.sidebar.slider(
-    "Downsampling Factor (Higher = Less Clutter)",
+    "Downsampling Factor",
     min_value=0,
     max_value=50,
     value=st.session_state.downsample_factor,
     step=1,
-    key="downsample_factor",
-    help="Higher values reduce points for large datasets.",
-    on_change=lambda: st.session_state.update({"downsample_factor": st.session_state.downsample_factor})
+    key="downsample_factor"
 )
 
-# Smoothing
-smoothing = st.sidebar.checkbox("Apply Smoothing (Moving Average)", value=st.session_state.smoothing, key="smoothing")
+smoothing = st.sidebar.checkbox("Apply Smoothing", value=st.session_state.smoothing, key="smoothing")
 window_size = st.sidebar.slider(
     "Smoothing Window Size",
     min_value=0,
@@ -218,68 +199,39 @@ window_size = st.sidebar.slider(
     value=st.session_state.window_size,
     step=1,
     key="window_size",
-    help="Larger window sizes create smoother lines but may reduce detail.",
     disabled=not smoothing
 ) if smoothing else 1
 
-# Update session state for smoothing and window size
 if smoothing != st.session_state.smoothing:
     st.session_state.smoothing = smoothing
 if window_size != st.session_state.window_size:
     st.session_state.window_size = window_size
 
-# Metric selection
 show_rider_power = st.sidebar.checkbox("Show Rider Power", value=True, key="show_rider_power")
 show_battery_power = st.sidebar.checkbox("Show Battery Power", value=True, key="show_battery_power")
 
-# Zoom slider
-zoom_factor = st.sidebar.slider(
-    "Zoom (Time Axis)",
-    min_value=0.1,
-    max_value=2.0,
-    value=st.session_state.zoom_factor,
-    step=0.1,
-    key="zoom_factor",
-    help="Increase to zoom in, decrease to zoom out.",
-    on_change=lambda: st.session_state.update({"zoom_factor": st.session_state.zoom_factor})
-)
-
-# Filter data based on time range or full view
+# Filter data
 if not df_pp.empty:
-    if show_full:
-        df_filtered_pp = df_pp.copy()
-    else:
-        df_filtered_pp = df_pp[(df_pp["Time"] >= time_range[0]) & (df_pp["Time"] <= time_range[1])]
+    df_filtered_pp = df_pp.copy() if show_full else df_pp[(df_pp["Time"] >= time_range[0]) & (df_pp["Time"] <= time_range[1])]
 else:
     df_filtered_pp = pd.DataFrame()
 
 if not df_s.empty:
-    if show_full:
-        df_filtered_s = df_s.copy()
-    else:
-        df_filtered_s = df_s[(df_s["Time"] >= time_range[0]) & (df_s["Time"] <= time_range[1])]
+    df_filtered_s = df_s.copy() if show_full else df_s[(df_s["Time"] >= time_range[0]) & (df_s["Time"] <= time_range[1])]
 else:
     df_filtered_s = pd.DataFrame()
 
-# Calculate x-axis range for graphs
+# Calculate x-axis range
 if not df_pp.empty or not df_s.empty:
     time_span = max_time - min_time if show_full else time_range[1] - time_range[0]
-    min_span = max(100, time_span * 0.05)
-    zoomed_span = max(min_span, time_span / max(zoom_factor, 0.1))
-    center_time = (min_time + max_time) / 2 if show_full else (time_range[0] + time_range[1]) / 2
-    x_range = [center_time - zoomed_span / 2, center_time + zoomed_span / 2]
-    x_range = [max(min_time, x_range[0]), min(max_time, x_range[1])]
+    x_range = [min_time if show_full else time_range[0], max_time if show_full else time_range[1]]
 else:
     x_range = [0, 10000]
 
 # Prepare data for graphing
 if not df_filtered_pp.empty:
     df_graph_pp = df_filtered_pp.copy()
-    max_points = 1000
-    if downsample_factor == 0:
-        max_points = len(df_graph_pp)
-    else:
-        max_points = max(50, len(df_graph_pp) // downsample_factor)
+    max_points = max(50, len(df_graph_pp) // downsample_factor) if downsample_factor > 0 else len(df_graph_pp)
     if len(df_graph_pp) > max_points:
         df_graph_pp = advanced_downsample(df_graph_pp, max_points)
     if smoothing and not df_graph_pp.empty and window_size > 0:
@@ -292,11 +244,7 @@ else:
 
 if not df_filtered_s.empty:
     df_graph_s = df_filtered_s.copy()
-    max_points = 1000
-    if downsample_factor == 0:
-        max_points = len(df_graph_s)
-    else:
-        max_points = max(50, len(df_graph_s) // downsample_factor)
+    max_points = max(50, len(df_graph_s) // downsample_factor) if downsample_factor > 0 else len(df_graph_s)
     if len(df_graph_s) > max_points:
         df_graph_s = advanced_downsample(df_graph_s, max_points)
     if smoothing and not df_graph_s.empty and window_size > 0:
@@ -307,11 +255,11 @@ if not df_filtered_s.empty:
 else:
     df_graph_s = pd.DataFrame()
 
-# Graph and metrics in expander
+# Graph and metrics
 with st.expander("Power vs. Time Comparison", expanded=True):
-    # Calculate metrics for PowerPedal and Stock
+    # Calculate metrics (unchanged)
     if not df_filtered_pp.empty:
-        time_hours_pp = df_filtered_pp["Time"] / 3600000  # ms to hours
+        time_hours_pp = df_filtered_pp["Time"] / 3600000
         energy_battery_pp = np.trapz(df_filtered_pp["Battery Power"], time_hours_pp)
         distance_pp = df_filtered_pp["Ride Distance"].max() if "Ride Distance" in df_filtered_pp.columns else 0
         distance_pp_display = format_distance(distance_pp)
@@ -325,7 +273,7 @@ with st.expander("Power vs. Time Comparison", expanded=True):
         duration_pp_display = "0 min 0 s"
 
     if not df_filtered_s.empty:
-        time_hours_s = df_filtered_s["Time"] / 3600000  # ms to hours
+        time_hours_s = df_filtered_s["Time"] / 3600000
         energy_battery_s = np.trapz(df_filtered_s["Battery Power"], time_hours_s)
         distance_s = df_filtered_s["Ride Distance"].max() if "Ride Distance" in df_filtered_s.columns else 0
         distance_s_display = format_distance(distance_s)
@@ -338,7 +286,7 @@ with st.expander("Power vs. Time Comparison", expanded=True):
         duration_s = 0
         duration_s_display = "0 min 0 s"
 
-    # Metrics in a centered container
+    # Metrics display
     with st.container():
         st.markdown("""
             <div class="metrics-container">
@@ -374,8 +322,8 @@ with st.expander("Power vs. Time Comparison", expanded=True):
             distance_s_display
         ), unsafe_allow_html=True)
 
-    # Create two columns for side-by-side graphs
-    col1, col2 = st.columns(2)
+    # Create columns for graphs
+    col1, col2 = st.columns([1, 1], gap="large")
 
     # PowerPedal Graph
     with col1:
@@ -410,8 +358,8 @@ with st.expander("Power vs. Time Comparison", expanded=True):
             title=f"PowerPedal: {selected_ride}",
             xaxis_title="Time (milliseconds)",
             yaxis_title="Power (W)",
-            xaxis=dict(range=x_range, fixedrange=False),
-            yaxis=dict(range=y_range_pp, fixedrange=False),
+            xaxis=dict(range=x_range, fixedrange=False),  # Allow horizontal panning
+            yaxis=dict(range=y_range_pp, fixedrange=True),  # Prevent vertical panning
             dragmode="pan",
             hovermode="closest",
             template="plotly_white",
@@ -431,18 +379,19 @@ with st.expander("Power vs. Time Comparison", expanded=True):
             fig_pp,
             use_container_width=True,
             config={
-                'modeBarButtonsToRemove': ['zoom2d', 'select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d'],
+                'modeBarButtonsToRemove': ['zoom2d', 'select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d'],
                 'displayModeBar': True,
                 'displaylogo': False,
                 'responsive': True,
-                'scrollZoom': True,
+                'scrollZoom': False,  # Disable scroll zoom
                 'toImageButtonOptions': {
                     'format': 'png',
                     'filename': 'PowerPedal_Graph',
                     'height': 600,
                     'width': 800,
                     'scale': 1
-                }
+                },
+                'pan2d': True  # Explicitly enable 2D panning (horizontal only due to yaxis fixedrange)
             },
             key="power_graph_pp"
         )
@@ -480,8 +429,8 @@ with st.expander("Power vs. Time Comparison", expanded=True):
             title=f"Stock: {selected_ride}",
             xaxis_title="Time (milliseconds)",
             yaxis_title="Power (W)",
-            xaxis=dict(range=x_range, fixedrange=False),
-            yaxis=dict(range=y_range_s, fixedrange=False),
+            xaxis=dict(range=x_range, fixedrange=False),  # Allow horizontal panning
+            yaxis=dict(range=y_range_s, fixedrange=True),  # Prevent vertical panning
             dragmode="pan",
             hovermode="closest",
             template="plotly_white",
@@ -501,32 +450,29 @@ with st.expander("Power vs. Time Comparison", expanded=True):
             fig_s,
             use_container_width=True,
             config={
-                'modeBarButtonsToRemove': ['zoom2d', 'select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d'],
+                'modeBarButtonsToRemove': ['zoom2d', 'select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d'],
                 'displayModeBar': True,
                 'displaylogo': False,
                 'responsive': True,
-                'scrollZoom': True,
+                'scrollZoom': False,  # Disable scroll zoom
                 'toImageButtonOptions': {
                     'format': 'png',
                     'filename': 'Stock_Graph',
                     'height': 600,
                     'width': 800,
                     'scale': 1
-                }
+                },
+                'pan2d': True  # Explicitly enable 2D panning (horizontal only due to yaxis fixedrange)
             },
             key="power_graph_s"
         )
 
-# Add custom CSS for mobile responsiveness, sidebar, and styling
+# CSS (unchanged from previous version)
 st.markdown("""
     <style>
     .main .block-container {
-        padding-left: 0.5rem !important;
-        padding-right: 0.5rem !important;
-        padding-top: 0.5rem !important;
-        padding-bottom: 0.5rem !important;
+        padding: 0.5rem !important;
         max-width: 100% !important;
-        box-sizing: border-box !important;
         overflow-x: hidden !important;
     }
     .title-container {
@@ -556,7 +502,6 @@ st.markdown("""
         margin-bottom: 20px !important;
     }
     .st-expander {
-        min-height: auto !important;
         border: 1px solid #ddd;
         border-radius: 5px;
         padding: 10px;
@@ -567,7 +512,7 @@ st.markdown("""
         margin: 0 !important;
         display: flex !important;
         flex-wrap: wrap !important;
-        gap: 20px !important;
+        gap: 30px !important;
     }
     .stColumns > div {
         flex: 1 1 100% !important;
@@ -575,11 +520,9 @@ st.markdown("""
         width: 100% !important;
         max-width: 100% !important;
         box-sizing: border-box !important;
-        padding: 10px !important;
+        padding: 15px !important;
     }
     .metrics-container {
-        background: none !important;
-        border: none !important;
         padding: 15px;
         margin-bottom: 20px;
         text-align: center;
@@ -629,13 +572,14 @@ st.markdown("""
         background-color: #cc6f00;
         border: 2px solid #cc6f00;
     }
-    /* Sidebar styling */
     [data-testid="stSidebar"] {
         transition: transform 0.3s ease-in-out !important;
-        touch-action: none !important;
+        touch-action: auto !important;
         -webkit-overflow-scrolling: touch !important;
         overscroll-behavior: contain !important;
         z-index: 1000 !important;
+        width: 80% !important;
+        max-width: 300px !important;
     }
     [data-testid="stSidebar"][aria-expanded="false"] {
         transform: translateX(-100%) !important;
@@ -643,19 +587,15 @@ st.markdown("""
     [data-testid="stSidebar"][aria-expanded="true"] {
         transform: translateX(0) !important;
     }
-    [data-testid="stSidebarNav"] {
-        touch-action: none !important;
-    }
     .swipe-area {
         position: fixed;
         left: 0;
         top: 0;
-        width: 30px;
+        width: 50px;
         height: 100%;
         background: transparent;
         z-index: 1001;
     }
-    /* Mobile-specific styles */
     @media (max-width: 768px) {
         .title-container {
             flex-direction: column;
@@ -678,10 +618,9 @@ st.markdown("""
             padding: 8px;
         }
         .stPlotlyChart {
-            height: 35vh !important;
+            height: 40vh !important;
             width: 100% !important;
-            max-width: 100vw !important;
-            margin-bottom: 30px !important;
+            margin-bottom: 40px !important;
         }
         .st-expander {
             min-height: auto !important;
@@ -691,20 +630,15 @@ st.markdown("""
         }
         h2 {
             font-size: 18px !important;
-            margin-bottom: 10px !important;
+            margin-bottom: 15px !important;
         }
         .stColumns {
             flex-direction: column !important;
-            gap: 30px !important;
+            gap: 40px !important;
         }
         .stColumns > div {
             width: 100% !important;
-            max-width: 100% !important;
-            padding: 15px !important;
-        }
-        /* Ensure sidebar is open by default on mobile */
-        [data-testid="stSidebar"] {
-            transform: translateX(0) !important;
+            padding: 20px !important;
         }
     }
     @media (max-width: 480px) {
@@ -722,14 +656,14 @@ st.markdown("""
             padding: 6px;
         }
         .stPlotlyChart {
-            height: 30vh !important;
-            margin-bottom: 25px !important;
+            height: 35vh !important;
+            margin-bottom: 30px !important;
         }
     }
     </style>
 """, unsafe_allow_html=True)
 
-# JavaScript for swipe-to-toggle sidebar and scroll retention
+# JavaScript (unchanged from previous version)
 st.markdown("""
     <script>
     document.addEventListener("DOMContentLoaded", function() {
@@ -737,86 +671,85 @@ st.markdown("""
         const sidebar = document.querySelector('[data-testid="stSidebar"]');
         const sidebarToggle = document.querySelector('[data-testid="stSidebarNav"] button');
         let lastScrollPosition = sessionStorage.getItem('scrollPosition') || 0;
-        let debounceTimeout = null;
         let touchStartX = 0;
         let touchEndX = 0;
+        let isSwiping = false;
 
-        // Ensure sidebar is open on mobile
+        // Initialize sidebar state
         if (window.innerWidth <= 768 && sidebar && sidebarToggle) {
             if (sidebar.getAttribute('aria-expanded') !== 'true') {
                 sidebarToggle.click();
             }
         }
 
-        // Restore scroll position on load
+        // Restore scroll position
         main.scrollTop = lastScrollPosition;
-
-        // Update scroll position on scroll
         main.addEventListener('scroll', () => {
             lastScrollPosition = main.scrollTop;
             sessionStorage.setItem('scrollPosition', lastScrollPosition);
         });
 
-        // Restore scroll position on DOM updates with debounce
-        const restoreScroll = () => {
-            if (debounceTimeout) clearTimeout(debounceTimeout);
-            debounceTimeout = setTimeout(() => {
-                requestAnimationFrame(() => {
-                    main.scrollTop = lastScrollPosition;
-                });
-            }, 100);
-        };
-
-        const observer = new MutationObserver(() => {
-            restoreScroll();
-        });
-
-        observer.observe(main, { childList: true, subtree: true, attributes: true });
-
-        // Create swipe area for opening sidebar
+        // Create swipe area
         const swipeArea = document.createElement('div');
         swipeArea.className = 'swipe-area';
         document.body.appendChild(swipeArea);
 
-        // Swipe detection
+        // Improved swipe handling
         function handleTouchStart(e) {
-            touchStartX = e.changedTouches[0].screenX;
-            console.log('Touch Start:', touchStartX); // Debug
+            if (e.target.closest('.swipe-area') || e.target.closest('[data-testid="stSidebar"]')) {
+                touchStartX = e.changedTouches[0].screenX;
+                isSwiping = true;
+            }
+        }
+
+        function handleTouchMove(e) {
+            if (isSwiping) {
+                touchEndX = e.changedTouches[0].screenX;
+                e.preventDefault(); // Prevent scrolling during swipe
+            }
         }
 
         function handleTouchEnd(e) {
-            touchEndX = e.changedTouches[0].screenX;
-            console.log('Touch End:', touchEndX); // Debug
-            handleSwipe();
+            if (isSwiping) {
+                touchEndX = e.changedTouches[0].screenX;
+                handleSwipe();
+                isSwiping = false;
+            }
         }
 
         function handleSwipe() {
             const swipeDistance = touchEndX - touchStartX;
             const isSidebarOpen = sidebar.getAttribute('aria-expanded') === 'true';
-            console.log('Swipe Distance:', swipeDistance, 'Sidebar Open:', isSidebarOpen); // Debug
-            if (swipeDistance > 50 && !isSidebarOpen) {
-                console.log('Opening sidebar');
+            const minSwipeDistance = 50;
+
+            if (swipeDistance > minSwipeDistance && !isSidebarOpen) {
                 sidebarToggle.click();
-            } else if (swipeDistance < -50 && isSidebarOpen) {
-                console.log('Closing sidebar');
+            } else if (swipeDistance < -minSwipeDistance && isSidebarOpen) {
                 sidebarToggle.click();
             }
         }
 
-        if (sidebar) {
-            sidebar.addEventListener('touchstart', handleTouchStart, { passive: true });
-            sidebar.addEventListener('touchend', handleTouchEnd, { passive: true });
-        }
+        // Add event listeners to both swipe area and sidebar
+        [swipeArea, sidebar].forEach(element => {
+            if (element) {
+                element.addEventListener('touchstart', handleTouchStart, { passive: false });
+                element.addEventListener('touchmove', handleTouchMove, { passive: false });
+                element.addEventListener('touchend', handleTouchEnd, { passive: false });
+            }
+        });
 
-        if (swipeArea) {
-            swipeArea.addEventListener('touchstart', handleTouchStart, { passive: true });
-            swipeArea.addEventListener('touchend', handleTouchEnd, { passive: true });
-        }
-
-        // Ensure graphs resize on window resize
+        // Handle window resize
         window.addEventListener('resize', () => {
             window.dispatchEvent(new Event('resize'));
         });
+
+        // Mutation observer for scroll retention
+        const observer = new MutationObserver(() => {
+            requestAnimationFrame(() => {
+                main.scrollTop = lastScrollPosition;
+            });
+        });
+        observer.observe(main, { childList: true, subtree: true, attributes: true });
     });
     </script>
 """, unsafe_allow_html=True)
