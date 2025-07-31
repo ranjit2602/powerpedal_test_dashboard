@@ -15,7 +15,7 @@ st.set_page_config(
 # Display logo and title using flexbox
 st.markdown("""
     <div class="title-container">
-        <img src="https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/logo.png" style="width: 200px;">
+        <img src="https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/logo.png" class="logo">
         <h1>PowerPedal™ vs Stock System Dashboard</h1>
     </div>
 """, unsafe_allow_html=True)
@@ -74,17 +74,17 @@ def advanced_downsample(df, max_points):
 
 # Initialize session state defaults
 if "time_range" not in st.session_state:
-    st.session_state.time_range = (0, 10000)  # Default if data is empty
+    st.session_state.time_range = (0, 10000)
 if "downsample_factor" not in st.session_state:
-    st.session_state.downsample_factor = 20  # Default to 20
+    st.session_state.downsample_factor = 20
 if "window_size" not in st.session_state:
-    st.session_state.window_size = 2  # Default to 2
+    st.session_state.window_size = 2
 if "zoom_factor" not in st.session_state:
     st.session_state.zoom_factor = 1.0
 if "smoothing" not in st.session_state:
     st.session_state.smoothing = True
 if "selected_ride" not in st.session_state:
-    st.session_state.selected_ride = list(csv_files.keys())[0]  # Default to first ride
+    st.session_state.selected_ride = list(csv_files.keys())[0]
 
 # Sidebar for interactivity
 st.sidebar.header("Filter Options")
@@ -174,7 +174,7 @@ if not df_pp.empty or not df_s.empty:
         "Select Time Range (ms)",
         min_time,
         max_time,
-        (min_time, max_time) if show_full else st.session_state.time_range,
+        st.session_state.time_range,
         step=1,
         key="time_range_slider",
         help="Slide or type to explore time periods.",
@@ -189,15 +189,19 @@ else:
     start_time, end_time = st.session_state.time_range
     time_range = st.session_state.time_range
 
-# Downsampling factor
+# Downsampling factor (controlled by session state only)
+if "downsample_factor" not in st.session_state:
+    st.session_state.downsample_factor = 20
+
 downsample_factor = st.sidebar.slider(
     "Downsampling Factor (Higher = Less Clutter)",
     min_value=0,
     max_value=50,
-    value=st.session_state.downsample_factor,  # Default 20
+    value=st.session_state.downsample_factor,
     step=1,
     key="downsample_factor",
-    help="Higher values reduce points for large datasets (e.g., 256 Hz for 2 hours)."
+    help="Higher values reduce points for large datasets (e.g., 256 Hz for 2 hours).",
+    on_change=lambda: st.session_state.update({"downsample_factor": st.session_state.downsample_factor})
 )
 
 # Smoothing
@@ -206,12 +210,18 @@ window_size = st.sidebar.slider(
     "Smoothing Window Size",
     min_value=0,
     max_value=10,
-    value=st.session_state.window_size,  # Default 2
+    value=st.session_state.window_size,
     step=1,
     key="window_size",
     help="Larger window sizes create smoother lines but may reduce detail.",
     disabled=not smoothing
 ) if smoothing else 1
+
+# Update session state for smoothing and window size
+if smoothing != st.session_state.smoothing:
+    st.session_state.smoothing = smoothing
+if window_size != st.session_state.window_size:
+    st.session_state.window_size = window_size
 
 # Metric selection
 show_rider_power = st.sidebar.checkbox("Show Rider Power", value=True, key="show_rider_power")
@@ -225,7 +235,8 @@ zoom_factor = st.sidebar.slider(
     value=st.session_state.zoom_factor,
     step=0.1,
     key="zoom_factor",
-    help="Increase to zoom in, decrease to zoom out."
+    help="Increase to zoom in, decrease to zoom out.",
+    on_change=lambda: st.session_state.update({"zoom_factor": st.session_state.zoom_factor})
 )
 
 # Filter data based on time range or full view
@@ -279,8 +290,8 @@ with st.expander("Power vs. Time Comparison", expanded=True):
     with st.container():
         st.markdown("""
             <div class="metrics-container">
-                <h3 style='text-align: center; font-size: 24px; margin-bottom: 10px; color: #fff;'>Key Metrics for {}</h3>
-                <div style='display: flex; justify-content: center; gap: 20px;'>
+                <h3>Key Metrics for {}</h3>
+                <div class="metrics-grid">
                     <div class="metric-box battery">
                         Total Battery Energy (PowerPedal)<br>{:.2f} Wh
                     </div>
@@ -343,7 +354,7 @@ with st.expander("Power vs. Time Comparison", expanded=True):
 
     # PowerPedal Graph
     with col1:
-        st.markdown("<h2 style='font-size: 28px; font-weight: bold;'>PowerPedal</h2>", unsafe_allow_html=True)
+        st.markdown("<h2>PowerPedal</h2>", unsafe_allow_html=True)
         fig_pp = go.Figure()
         if show_battery_power and not df_graph_pp.empty:
             fig_pp.add_trace(go.Scatter(
@@ -351,7 +362,7 @@ with st.expander("Power vs. Time Comparison", expanded=True):
                 y=df_graph_pp["Battery Power"],
                 mode="lines",
                 name="Battery Power (W)",
-                line=dict(color="#ffc107", width=2),  # Lighter yellow
+                line=dict(color="#ffc107", width=2),
                 opacity=0.7,
                 hovertemplate="Time: %{x:.2f} ms<br>Battery Power: %{y:.2f} W<extra></extra>"
             ))
@@ -361,7 +372,7 @@ with st.expander("Power vs. Time Comparison", expanded=True):
                 y=df_graph_pp["Rider Power"],
                 mode="lines",
                 name="Rider Power (W)",
-                line=dict(color="#4db6d1", width=2),  # Lighter blue
+                line=dict(color="#4db6d1", width=2),
                 opacity=0.7,
                 hovertemplate="Time: %{x:.2f} ms<br>Rider Power: %{y:.2f} W<extra></extra>"
             ))
@@ -407,7 +418,7 @@ with st.expander("Power vs. Time Comparison", expanded=True):
 
     # Stock System Graph
     with col2:
-        st.markdown("<h2 style='font-size: 28px; font-weight: bold;'>Stock</h2>", unsafe_allow_html=True)
+        st.markdown("<h2>Stock</h2>", unsafe_allow_html=True)
         fig_s = go.Figure()
         if show_battery_power and not df_graph_s.empty:
             fig_s.add_trace(go.Scatter(
@@ -415,7 +426,7 @@ with st.expander("Power vs. Time Comparison", expanded=True):
                 y=df_graph_s["Battery Power"],
                 mode="lines",
                 name="Battery Power (W)",
-                line=dict(color="#ff8c00", width=2),  # Lighter orange
+                line=dict(color="#ff8c00", width=2),
                 opacity=0.7,
                 hovertemplate="Time: %{x:.2f} ms<br>Battery Power: %{y:.2f} W<extra></extra>"
             ))
@@ -425,7 +436,7 @@ with st.expander("Power vs. Time Comparison", expanded=True):
                 y=df_graph_s["Rider Power"],
                 mode="lines",
                 name="Rider Power (W)",
-                line=dict(color="#00a3a3", width=2),  # Lighter teal
+                line=dict(color="#00a3a3", width=2),
                 opacity=0.7,
                 hovertemplate="Time: %{x:.2f} ms<br>Rider Power: %{y:.2f} W<extra></extra>"
             ))
@@ -473,22 +484,33 @@ with st.expander("Power vs. Time Comparison", expanded=True):
 st.markdown("""
     <style>
     .main .block-container {
-        padding-left: 0 !important;
-        padding-right: 0 !important;
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
         padding-top: 0.5rem !important;
         padding-bottom: 1rem !important;
         max-width: 100% !important;
     }
     .title-container {
         display: flex;
+        flex-direction: row;
         align-items: center;
-        gap: 5px;
-        margin-top: -10px !important;
+        justify-content: center;
+        gap: 10px;
+        margin: 10px 0;
+        flex-wrap: wrap;
+    }
+    .title-container .logo {
+        width: 100px;
+        height: auto;
+    }
+    .title-container h1 {
+        font-size: 24px;
+        margin: 0;
+        text-align: center;
     }
     .stPlotlyChart {
         width: 100% !important;
-        margin-left: 0 !important;
-        margin-right: 0 !important;
+        margin: 0 auto !important;
     }
     .st-expander {
         min-height: 600px !important;
@@ -501,14 +523,28 @@ st.markdown("""
         border: none !important;
         padding: 15px;
         margin-bottom: 20px;
+        text-align: center;
+    }
+    .metrics-container h3 {
+        font-size: 24px;
+        margin-bottom: 10px;
+        color: #fff;
+    }
+    .metrics-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 10px;
+        justify-items: center;
     }
     .metric-box {
         padding: 10px;
         border-radius: 5px;
         text-align: center;
-        font-size: 18px;
+        font-size: 16px;
         font-weight: bold;
-        color: #000000;
+        color: #000;
+        width: 100%;
+        box-sizing: border-box;
     }
     .metric-box.battery {
         background-color: #fff75e;
@@ -526,61 +562,59 @@ st.markdown("""
         background-color: #008080;
         border: 2px solid #008080;
     }
-    div[data-testid="stHorizontalBlock"] > div {
-        display: flex !important;
-        align-items: center !important;
-        gap: 10px !important;
-    }
-    @media (max-width: 600px) {
+    @media (max-width: 768px) {
+        .title-container {
+            flex-direction: column;
+            gap: 5px;
+        }
+        .title-container .logo {
+            width: 80px;
+        }
+        .title-container h1 {
+            font-size: 20px;
+        }
+        .metrics-container h3 {
+            font-size: 20px;
+        }
+        .metrics-grid {
+            grid-template-columns: 1fr;
+        }
+        .metric-box {
+            font-size: 14px;
+            padding: 8px;
+        }
         .stPlotlyChart {
             height: 50vh !important;
         }
         .st-expander {
             min-height: 50vh !important;
         }
-        .title-container {
-            margin-top: -5px !important;
-        }
-        .metrics-container {
-            padding: 10px;
-        }
-        .metrics-container h3 {
-            font-size: 20px !important;
-            color: #fff !important;
-        }
-        .metric-box {
-            font-size: 16px !important;
-            padding: 8px;
-        }
-        .stSlider label {
+        .stSlider label, .stCheckbox label, .stNumberInput label, .stSelectbox label {
             font-size: 12px !important;
-        }
-        .stCheckbox label {
-            font-size: 12px !important;
-        }
-        .stNumberInput label {
-            font-size: 12px !important;
-        }
-        .stSelectbox label {
-            font-size: 12px !important;
-        }
-        h1 {
-            font-size: 20px !important;
         }
         h2 {
-            font-size: 24px !important;
+            font-size: 20px !important;
         }
-        .stImage img {
-            width: 80px !important;
+    }
+    @media (max-width: 480px) {
+        .title-container .logo {
+            width: 60px;
         }
-        div[data-testid="stHorizontalBlock"] > div {
-            display: flex !important;
-            flex-direction: row !important;
-            align-items: center !important;
-            gap: 10px !important;
+        .title-container h1 {
+            font-size: 18px;
         }
-        .legend text {
-            font-size: 12px !important;
+        .metrics-container h3 {
+            font-size: 18px;
+        }
+        .metric-box {
+            font-size: 12px;
+            padding: 6px;
+        }
+        .stPlotlyChart {
+            height: 40vh !important;
+        }
+        .st-expander {
+            min-height: 40vh !important;
         }
     }
     </style>
