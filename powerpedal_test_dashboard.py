@@ -17,12 +17,12 @@ def format_distance(meters):
     else:
         return f"{meters / 1000:.2f} km"
 
-# Set page config with logo
+# Set page config with logo and expanded sidebar
 st.set_page_config(
     page_title="PowerPedal Dashboard",
     page_icon="https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/logo.png",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded"  # Always expanded, including mobile
 )
 
 # Display logo and title using flexbox
@@ -82,7 +82,7 @@ def advanced_downsample(df, max_points):
         'Battery Power': 'mean',
         'Rider Power': 'mean',
         'KMPH': 'mean',
-        'Ride Distance': 'max'  # Use max for cumulative distance
+        'Ride Distance': 'max'
     }).reset_index(drop=True)
     return df_downsampled
 
@@ -387,7 +387,7 @@ with st.expander("Power vs. Time Comparison", expanded=True):
                 y=df_graph_pp["Battery Power"],
                 mode="lines",
                 name="Battery Power (W)",
-                line=dict(color="#00ff00", width=2),  # Bright green
+                line=dict(color="#00ff00", width=2),
                 opacity=0.7,
                 hovertemplate="Time: %{x:.2f} ms<br>Battery Power: %{y:.2f} W<extra></extra>"
             ))
@@ -397,7 +397,7 @@ with st.expander("Power vs. Time Comparison", expanded=True):
                 y=df_graph_pp["Rider Power"],
                 mode="lines",
                 name="Rider Power (W)",
-                line=dict(color="#ff00ff", width=2),  # Bright magenta
+                line=dict(color="#ff00ff", width=2),
                 opacity=0.7,
                 hovertemplate="Time: %{x:.2f} ms<br>Rider Power: %{y:.2f} W<extra></extra>"
             ))
@@ -410,12 +410,12 @@ with st.expander("Power vs. Time Comparison", expanded=True):
             title=f"PowerPedal: {selected_ride}",
             xaxis_title="Time (milliseconds)",
             yaxis_title="Power (W)",
-            xaxis=dict(range=x_range, fixedrange=False),  # Allow zooming/panning
+            xaxis=dict(range=x_range, fixedrange=False),
             yaxis=dict(range=y_range_pp, fixedrange=False),
             dragmode="pan",
             hovermode="closest",
             template="plotly_white",
-            height=None,  # Let CSS control height
+            height=None,
             margin=dict(t=50, b=80, l=5, r=5),
             autosize=True,
             legend=dict(
@@ -435,7 +435,7 @@ with st.expander("Power vs. Time Comparison", expanded=True):
                 'displayModeBar': True,
                 'displaylogo': False,
                 'responsive': True,
-                'scrollZoom': True,  # Enable pinch-to-zoom
+                'scrollZoom': True,
                 'toImageButtonOptions': {
                     'format': 'png',
                     'filename': 'PowerPedal_Graph',
@@ -457,7 +457,7 @@ with st.expander("Power vs. Time Comparison", expanded=True):
                 y=df_graph_s["Battery Power"],
                 mode="lines",
                 name="Battery Power (W)",
-                line=dict(color="#00ff00", width=2),  # Bright green
+                line=dict(color="#00ff00", width=2),
                 opacity=0.7,
                 hovertemplate="Time: %{x:.2f} ms<br>Battery Power: %{y:.2f} W<extra></extra>"
             ))
@@ -467,7 +467,7 @@ with st.expander("Power vs. Time Comparison", expanded=True):
                 y=df_graph_s["Rider Power"],
                 mode="lines",
                 name="Rider Power (W)",
-                line=dict(color="#ff00ff", width=2),  # Bright magenta
+                line=dict(color="#ff00ff", width=2),
                 opacity=0.7,
                 hovertemplate="Time: %{x:.2f} ms<br>Rider Power: %{y:.2f} W<extra></extra>"
             ))
@@ -480,12 +480,12 @@ with st.expander("Power vs. Time Comparison", expanded=True):
             title=f"Stock: {selected_ride}",
             xaxis_title="Time (milliseconds)",
             yaxis_title="Power (W)",
-            xaxis=dict(range=x_range, fixedrange=False),  # Allow zooming/panning
+            xaxis=dict(range=x_range, fixedrange=False),
             yaxis=dict(range=y_range_s, fixedrange=False),
             dragmode="pan",
             hovermode="closest",
             template="plotly_white",
-            height=None,  # Let CSS control height
+            height=None,
             margin=dict(t=50, b=80, l=5, r=5),
             autosize=True,
             legend=dict(
@@ -505,7 +505,7 @@ with st.expander("Power vs. Time Comparison", expanded=True):
                 'displayModeBar': True,
                 'displaylogo': False,
                 'responsive': True,
-                'scrollZoom': True,  # Enable pinch-to-zoom
+                'scrollZoom': True,
                 'toImageButtonOptions': {
                     'format': 'png',
                     'filename': 'Stock_Graph',
@@ -553,9 +553,10 @@ st.markdown("""
         margin: 0 auto !important;
         overflow: visible !important;
         box-sizing: border-box !important;
+        margin-bottom: 20px !important;
     }
     .st-expander {
-        min-height: 100% !important;
+        min-height: auto !important;
         border: 1px solid #ddd;
         border-radius: 5px;
         padding: 10px;
@@ -566,6 +567,7 @@ st.markdown("""
         margin: 0 !important;
         display: flex !important;
         flex-wrap: wrap !important;
+        gap: 20px !important;
     }
     .stColumns > div {
         flex: 1 1 100% !important;
@@ -573,7 +575,7 @@ st.markdown("""
         width: 100% !important;
         max-width: 100% !important;
         box-sizing: border-box !important;
-        padding: 5px !important;
+        padding: 10px !important;
     }
     .metrics-container {
         background: none !important;
@@ -633,6 +635,7 @@ st.markdown("""
         touch-action: none !important;
         -webkit-overflow-scrolling: touch !important;
         overscroll-behavior: contain !important;
+        z-index: 1000 !important;
     }
     [data-testid="stSidebar"][aria-expanded="false"] {
         transform: translateX(-100%) !important;
@@ -642,6 +645,15 @@ st.markdown("""
     }
     [data-testid="stSidebarNav"] {
         touch-action: none !important;
+    }
+    .swipe-area {
+        position: fixed;
+        left: 0;
+        top: 0;
+        width: 30px;
+        height: 100%;
+        background: transparent;
+        z-index: 1001;
     }
     /* Mobile-specific styles */
     @media (max-width: 768px) {
@@ -666,9 +678,10 @@ st.markdown("""
             padding: 8px;
         }
         .stPlotlyChart {
-            height: 40vh !important;
+            height: 35vh !important;
             width: 100% !important;
             max-width: 100vw !important;
+            margin-bottom: 30px !important;
         }
         .st-expander {
             min-height: auto !important;
@@ -678,13 +691,20 @@ st.markdown("""
         }
         h2 {
             font-size: 18px !important;
+            margin-bottom: 10px !important;
         }
         .stColumns {
             flex-direction: column !important;
+            gap: 30px !important;
         }
         .stColumns > div {
             width: 100% !important;
             max-width: 100% !important;
+            padding: 15px !important;
+        }
+        /* Ensure sidebar is open by default on mobile */
+        [data-testid="stSidebar"] {
+            transform: translateX(0) !important;
         }
     }
     @media (max-width: 480px) {
@@ -702,12 +722,8 @@ st.markdown("""
             padding: 6px;
         }
         .stPlotlyChart {
-            height: 35vh !important;
-            width: 100% !important;
-            max-width: 100vw !important;
-        }
-        .st-expander {
-            min-height: auto !important;
+            height: 30vh !important;
+            margin-bottom: 25px !important;
         }
     }
     </style>
@@ -724,6 +740,13 @@ st.markdown("""
         let debounceTimeout = null;
         let touchStartX = 0;
         let touchEndX = 0;
+
+        // Ensure sidebar is open on mobile
+        if (window.innerWidth <= 768 && sidebar && sidebarToggle) {
+            if (sidebar.getAttribute('aria-expanded') !== 'true') {
+                sidebarToggle.click();
+            }
+        }
 
         // Restore scroll position on load
         main.scrollTop = lastScrollPosition;
@@ -750,28 +773,44 @@ st.markdown("""
 
         observer.observe(main, { childList: true, subtree: true, attributes: true });
 
-        // Swipe detection for sidebar
-        if (sidebar) {
-            sidebar.addEventListener('touchstart', (e) => {
-                touchStartX = e.changedTouches[0].screenX;
-            }, { passive: true });
+        // Create swipe area for opening sidebar
+        const swipeArea = document.createElement('div');
+        swipeArea.className = 'swipe-area';
+        document.body.appendChild(swipeArea);
 
-            sidebar.addEventListener('touchend', (e) => {
-                touchEndX = e.changedTouches[0].screenX;
-                handleSwipe();
-            }, { passive: true });
+        // Swipe detection
+        function handleTouchStart(e) {
+            touchStartX = e.changedTouches[0].screenX;
+            console.log('Touch Start:', touchStartX); // Debug
+        }
 
-            function handleSwipe() {
-                const swipeDistance = touchEndX - touchStartX;
-                const isSidebarOpen = sidebar.getAttribute('aria-expanded') === 'true';
-                if (swipeDistance > 50 && !isSidebarOpen) {
-                    // Swipe right to open
-                    sidebarToggle.click();
-                } else if (swipeDistance < -50 && isSidebarOpen) {
-                    // Swipe left to close
-                    sidebarToggle.click();
-                }
+        function handleTouchEnd(e) {
+            touchEndX = e.changedTouches[0].screenX;
+            console.log('Touch End:', touchEndX); // Debug
+            handleSwipe();
+        }
+
+        function handleSwipe() {
+            const swipeDistance = touchEndX - touchStartX;
+            const isSidebarOpen = sidebar.getAttribute('aria-expanded') === 'true';
+            console.log('Swipe Distance:', swipeDistance, 'Sidebar Open:', isSidebarOpen); // Debug
+            if (swipeDistance > 50 && !isSidebarOpen) {
+                console.log('Opening sidebar');
+                sidebarToggle.click();
+            } else if (swipeDistance < -50 && isSidebarOpen) {
+                console.log('Closing sidebar');
+                sidebarToggle.click();
             }
+        }
+
+        if (sidebar) {
+            sidebar.addEventListener('touchstart', handleTouchStart, { passive: true });
+            sidebar.addEventListener('touchend', handleTouchEnd, { passive: true });
+        }
+
+        if (swipeArea) {
+            swipeArea.addEventListener('touchstart', handleTouchStart, { passive: true });
+            swipeArea.addEventListener('touchend', handleTouchEnd, { passive: true });
         }
 
         // Ensure graphs resize on window resize
