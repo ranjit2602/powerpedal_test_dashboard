@@ -45,7 +45,7 @@ csv_files = {
 def load_data(csv_url, _cache_buster):
     try:
         df = pd.read_csv(csv_url)
-        required_cols = ["Time", "Battery Power", "Rider Power", "Speed"]
+        required_cols = ["Time", "Battery Power", "Rider Power", "KMPH"]
         missing_cols = [col for col in required_cols if col not in df.columns]
         if missing_cols:
             st.error(f"Missing columns in {csv_url}: {missing_cols}. Found: {list(df.columns)}")
@@ -68,7 +68,7 @@ def advanced_downsample(df, max_points):
         'Time': 'mean',
         'Battery Power': 'mean',
         'Rider Power': 'mean',
-        'Speed': 'mean'
+        'KMPH': 'mean'
     }).reset_index(drop=True)
     return df_downsampled
 
@@ -327,7 +327,7 @@ with st.expander("Power vs. Time Comparison", expanded=True):
         if smoothing and not df_graph_pp.empty and window_size > 0:
             df_graph_pp["Battery Power"] = df_graph_pp["Battery Power"].rolling(window=window_size, center=True, min_periods=1).mean()
             df_graph_pp["Rider Power"] = df_graph_pp["Rider Power"].rolling(window=window_size, center=True, min_periods=1).mean()
-            df_graph_pp["Speed"] = df_graph_pp["Speed"].rolling(window=window_size, center=True, min_periods=1).mean()
+            df_graph_pp["KMPH"] = df_graph_pp["KMPH"].rolling(window=window_size, center=True, min_periods=1).mean()
             df_graph_pp = df_graph_pp.interpolate(method="linear").fillna(method="ffill").fillna(method="bfill")
     else:
         df_graph_pp = pd.DataFrame()
@@ -344,7 +344,7 @@ with st.expander("Power vs. Time Comparison", expanded=True):
         if smoothing and not df_graph_s.empty and window_size > 0:
             df_graph_s["Battery Power"] = df_graph_s["Battery Power"].rolling(window=window_size, center=True, min_periods=1).mean()
             df_graph_s["Rider Power"] = df_graph_s["Rider Power"].rolling(window=window_size, center=True, min_periods=1).mean()
-            df_graph_s["Speed"] = df_graph_s["Speed"].rolling(window=window_size, center=True, min_periods=1).mean()
+            df_graph_s["KMPH"] = df_graph_s["KMPH"].rolling(window=window_size, center=True, min_periods=1).mean()
             df_graph_s = df_graph_s.interpolate(method="linear").fillna(method="ffill").fillna(method="bfill")
     else:
         df_graph_s = pd.DataFrame()
