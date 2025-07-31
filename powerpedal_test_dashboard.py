@@ -10,6 +10,13 @@ def seconds_to_min_sec(seconds):
     remaining_seconds = seconds % 60
     return f"{minutes} min {remaining_seconds:.1f} s"
 
+# Helper function to format ride distance (meters if < 1000, else kilometers)
+def format_distance(meters):
+    if meters < 1000:
+        return f"{meters:.0f} m"
+    else:
+        return f"{meters / 1000:.2f} km"
+
 # Set page config with logo
 st.set_page_config(
     page_title="PowerPedal Dashboard",
@@ -265,6 +272,41 @@ if not df_pp.empty or not df_s.empty:
 else:
     x_range = [0, 10000]
 
+# Prepare data for graphing (moved before graph plotting)
+if not df_filtered_pp.empty:
+    df_graph_pp = df_filtered_pp.copy()
+    max_points = 1000
+    if downsample_factor == 0:
+        max_points = len(df_graph_pp)
+    else:
+        max_points = max(50, len(df_graph_pp) // downsample_factor)
+    if len(df_graph_pp) > max_points:
+        df_graph_pp = advanced_downsample(df_graph_pp, max_points)
+    if smoothing and not df_graph_pp.empty and window_size > 0:
+        df_graph_pp["Battery Power"] = df_graph_pp["Battery Power"].rolling(window=window_size, center=True, min_periods=1).mean()
+        df_graph_pp["Rider Power"] = df_graph_pp["Rider Power"].rolling(window=window_size, center=True, min_periods=1).mean()
+        df_graph_pp["KMPH"] = df_graph_pp["KMPH"].rolling(window=window_size, center=True, min_periods=1).mean()
+        df_graph_pp = df_graph_pp.interpolate(method="linear").fillna(method="ffill").fillna(method="bfill")
+else:
+    df_graph_pp = pd.DataFrame()
+
+if not df_filtered_s.empty:
+    df_graph_s = df_filtered_s.copy()
+    max_points = 1000
+    if downsample_factor == 0:
+        max_points = len(df_graph_s)
+    else:
+        max_points = max(50, len(df_graph_s) // downsample_factor)
+    if len(df_graph_s) > max_points:
+        df_graph_s = advanced_downsample(df_graph_s, max_points)
+    if smoothing and not df_graph_s.empty and window_size > 0:
+        df_graph_s["Battery Power"] = df_graph_s["Battery Power"].rolling(window=window_size, center=True, min_periods=1).mean()
+        df_graph_s["Rider Power"] = df_graph_s["Rider Power"].rolling(window=window_size, center=True, min_periods=1).mean()
+        df_graph_s["KMPH"] = df_graph_s["KMPH"].rolling(window=window_size, center=True, min_periods=1).mean()
+        df_graph_s = df_graph_s.interpolate(method="linear").fillna(method="ffill").fillna(method="bfill")
+else:
+    df_graph_s = pd.DataFrame()
+
 # Graph and metrics in expander
 with st.expander("Power vs. Time Comparison", expanded=True):
     # Calculate metrics for PowerPedal and Stock
@@ -272,11 +314,13 @@ with st.expander("Power vs. Time Comparison", expanded=True):
         time_hours_pp = df_filtered_pp["Time"] / 3600000  # ms to hours
         energy_battery_pp = np.trapz(df_filtered_pp["Battery Power"], time_hours_pp)
         distance_pp = df_filtered_pp["Ride Distance"].max() if "Ride Distance" in df_filtered_pp.columns else 0
+        distance_pp_display = format_distance(distance_pp)
         duration_pp = (df_filtered_pp["Time"].max() - df_filtered_pp["Time"].min()) / 1000
         duration_pp_display = seconds_to_min_sec(duration_pp)
     else:
         energy_battery_pp = 0
         distance_pp = 0
+        distance_pp_display = "0 m"
         duration_pp = 0
         duration_pp_display = "0 min 0 s"
 
@@ -284,11 +328,13 @@ with st.expander("Power vs. Time Comparison", expanded=True):
         time_hours_s = df_filtered_s["Time"] / 3600000  # ms to hours
         energy_battery_s = np.trapz(df_filtered_s["Battery Power"], time_hours_s)
         distance_s = df_filtered_s["Ride Distance"].max() if "Ride Distance" in df_filtered_s.columns else 0
+        distance_s_display = format_distance(distance_s)
         duration_s = (df_filtered_s["Time"].max() - df_filtered_s["Time"].min()) / 1000
         duration_s_display = seconds_to_min_sec(duration_s)
     else:
         energy_battery_s = 0
         distance_s = 0
+        distance_s_display = "0 m"
         duration_s = 0
         duration_s_display = "0 min 0 s"
 
@@ -305,7 +351,7 @@ with st.expander("Power vs. Time Comparison", expanded=True):
                         Ride Duration (PowerPedal)<br>{}
                     </div>
                     <div class="metric-box distance">
-                        Ride Distance (PowerPedal)<br>{:.2f} km
+                        Ride Distance (PowerPedal)<br>{}
                     </div>
                     <div class="metric-box battery-stock">
                         Total Battery Energy (Stock)<br>{:.2f} Wh
@@ -314,7 +360,7 @@ with st.expander("Power vs. Time Comparison", expanded=True):
                         Ride Duration (Stock)<br>{}
                     </div>
                     <div class="metric-box distance-stock">
-                        Ride Distance (Stock)<br>{:.2f} km
+                        Ride Distance (Stock)<br>{}
                     </div>
                 </div>
             </div>
@@ -322,46 +368,11 @@ with st.expander("Power vs. Time Comparison", expanded=True):
             selected_ride,
             energy_battery_pp,
             duration_pp_display,
-            distance_pp,
+            distance_pp_display,
             energy_battery_s,
             duration_s_display,
-            distance_s
+            distance_s_display
         ), unsafe_allow_html=True)
-
-    # Prepare data for graphing
-    if not df_filtered_pp.empty:
-        df_graph_pp = df_filtered_pp.copy()
-        max_points = 1000
-        if downsample_factor == 0:
-            max_points = len(df_graph_pp)
-        else:
-            max_points = max(50, len(df_graph_pp) // downsample_factor)
-        if len(df_graph_pp) > max_points:
-            df_graph_pp = advanced_downsample(df_graph_pp, max_points)
-        if smoothing and not df_graph_pp.empty and window_size > 0:
-            df_graph_pp["Battery Power"] = df_graph_pp["Battery Power"].rolling(window=window_size, center=True, min_periods=1).mean()
-            df_graph_pp["Rider Power"] = df_graph_pp["Rider Power"].rolling(window=window_size, center=True, min_periods=1).mean()
-            df_graph_pp["KMPH"] = df_graph_pp["KMPH"].rolling(window=window_size, center=True, min_periods=1).mean()
-            df_graph_pp = df_graph_pp.interpolate(method="linear").fillna(method="ffill").fillna(method="bfill")
-    else:
-        df_graph_pp = pd.DataFrame()
-
-    if not df_filtered_s.empty:
-        df_graph_s = df_filtered_s.copy()
-        max_points = 1000
-        if downsample_factor == 0:
-            max_points = len(df_graph_s)
-        else:
-            max_points = max(50, len(df_graph_s) // downsample_factor)
-        if len(df_graph_s) > max_points:
-            df_graph_s = advanced_downsample(df_graph_s, max_points)
-        if smoothing and not df_graph_s.empty and window_size > 0:
-            df_graph_s["Battery Power"] = df_graph_s["Battery Power"].rolling(window=window_size, center=True, min_periods=1).mean()
-            df_graph_s["Rider Power"] = df_graph_s["Rider Power"].rolling(window=window_size, center=True, min_periods=1).mean()
-            df_graph_s["KMPH"] = df_graph_s["KMPH"].rolling(window=window_size, center=True, min_periods=1).mean()
-            df_graph_s = df_graph_s.interpolate(method="linear").fillna(method="ffill").fillna(method="bfill")
-    else:
-        df_graph_s = pd.DataFrame()
 
     # Create two columns for side-by-side graphs
     col1, col2 = st.columns(2)
@@ -376,7 +387,7 @@ with st.expander("Power vs. Time Comparison", expanded=True):
                 y=df_graph_pp["Battery Power"],
                 mode="lines",
                 name="Battery Power (W)",
-                line=dict(color="#ffc107", width=2),
+                line=dict(color="#4db6d1", width=2),
                 opacity=0.7,
                 hovertemplate="Time: %{x:.2f} ms<br>Battery Power: %{y:.2f} W<extra></extra>"
             ))
@@ -386,7 +397,7 @@ with st.expander("Power vs. Time Comparison", expanded=True):
                 y=df_graph_pp["Rider Power"],
                 mode="lines",
                 name="Rider Power (W)",
-                line=dict(color="#4db6d1", width=2),
+                line=dict(color="#6fc7e1", width=2),
                 opacity=0.7,
                 hovertemplate="Time: %{x:.2f} ms<br>Rider Power: %{y:.2f} W<extra></extra>"
             ))
@@ -425,6 +436,7 @@ with st.expander("Power vs. Time Comparison", expanded=True):
                 'displaylogo': False,
                 'showTips': False,
                 'responsive': True,
+                'autosizable': True,
                 'scrollZoom': False
             },
             key="power_graph_pp"
@@ -450,7 +462,7 @@ with st.expander("Power vs. Time Comparison", expanded=True):
                 y=df_graph_s["Rider Power"],
                 mode="lines",
                 name="Rider Power (W)",
-                line=dict(color="#00a3a3", width=2),
+                line=dict(color="#ffa733", width=2),
                 opacity=0.7,
                 hovertemplate="Time: %{x:.2f} ms<br>Rider Power: %{y:.2f} W<extra></extra>"
             ))
@@ -489,6 +501,7 @@ with st.expander("Power vs. Time Comparison", expanded=True):
                 'displaylogo': False,
                 'showTips': False,
                 'responsive': True,
+                'autosizable': True,
                 'scrollZoom': False
             },
             key="power_graph_s"
@@ -503,6 +516,7 @@ st.markdown("""
         padding-top: 0.5rem !important;
         padding-bottom: 1rem !important;
         max-width: 100% !important;
+        box-sizing: border-box !important;
     }
     .title-container {
         display: flex;
@@ -524,13 +538,24 @@ st.markdown("""
     }
     .stPlotlyChart {
         width: 100% !important;
+        max-width: 100vw !important;
         margin: 0 auto !important;
+        overflow: hidden !important;
+        box-sizing: border-box !important;
     }
     .st-expander {
         min-height: 600px !important;
         border: 1px solid #ddd;
         border-radius: 5px;
         padding: 10px;
+        box-sizing: border-box !important;
+    }
+    .stColumns > div {
+        display: flex !important;
+        flex: 1 !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
     }
     .metrics-container {
         background: none !important;
@@ -561,28 +586,28 @@ st.markdown("""
         box-sizing: border-box;
     }
     .metric-box.battery {
-        background-color: #fff75e;
-        border: 2px solid #fff75e;
+        background-color: #4db6d1; /* Base blue for PowerPedal Battery */
+        border: 2px solid #4db6d1;
     }
     .metric-box.rider {
-        background-color: #90e0ef;
-        border: 2px solid #90e0ef;
+        background-color: #6fc7e1; /* Lighter blue for PowerPedal Duration */
+        border: 2px solid #6fc7e1;
     }
     .metric-box.distance {
-        background-color: #d3d3d3;
-        border: 2px solid #d3d3d3;
+        background-color: #2e8ba3; /* Darker blue for PowerPedal Distance */
+        border: 2px solid #2e8ba3;
     }
     .metric-box.battery-stock {
-        background-color: #ff6200;
-        border: 2px solid #ff6200;
+        background-color: #ff8c00; /* Base orange for Stock Battery */
+        border: 2px solid #ff8c00;
     }
     .metric-box.rider-stock {
-        background-color: #008080;
-        border: 2px solid #008080;
+        background-color: #ffa733; /* Lighter orange for Stock Duration */
+        border: 2px solid #ffa733;
     }
     .metric-box.distance-stock {
-        background-color: #a9a9a9;
-        border: 2px solid #a9a9a9;
+        background-color: #cc6f00; /* Darker orange for Stock Distance */
+        border: 2px solid #cc6f00;
     }
     @media (max-width: 768px) {
         .title-container {
@@ -607,7 +632,8 @@ st.markdown("""
         }
         .stPlotlyChart {
             height: 50vh !important;
-            width: 100vw !important;
+            width: 100% !important;
+            max-width: 100vw !important;
         }
         .st-expander {
             min-height: 50vh !important;
@@ -617,6 +643,10 @@ st.markdown("""
         }
         h2 {
             font-size: 20px !important;
+        }
+        .stColumns > div {
+            width: 100% !important;
+            max-width: 100% !important;
         }
     }
     @media (max-width: 480px) {
@@ -635,7 +665,8 @@ st.markdown("""
         }
         .stPlotlyChart {
             height: 40vh !important;
-            width: 100vw !important;
+            width: 100% !important;
+            max-width: 100vw !important;
         }
         .st-expander {
             min-height: 40vh !important;
