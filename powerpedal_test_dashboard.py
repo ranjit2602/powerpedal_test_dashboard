@@ -95,6 +95,8 @@ if "smoothing" not in st.session_state:
     st.session_state.smoothing = True
 if "selected_ride" not in st.session_state:
     st.session_state.selected_ride = list(csv_files.keys())[0]
+if "zoom_level" not in st.session_state:
+    st.session_state.zoom_level = 1.0  # Initialize to 1.0x (full view)
 
 # Sidebar
 st.sidebar.header("Filter Options")
@@ -207,6 +209,26 @@ if smoothing != st.session_state.smoothing:
 if window_size != st.session_state.window_size:
     st.session_state.window_size = window_size
 
+# Zoom slider
+if st.sidebar.button("Reset Zoom"):
+    st.session_state.zoom_level = 1.0
+    st.rerun()
+
+zoom_level = st.sidebar.slider(
+    "Zoom Scale",
+    min_value=0.05,
+    max_value=1.0,
+    value=st.session_state.zoom_level,
+    step=0.05,
+    format="%.2fx",
+    key="zoom_level_slider",
+    help="Adjust the X-axis scale. Lower values (e.g., 0.05x) zoom in, higher values (e.g., 1.0x) zoom out."
+)
+
+if zoom_level != st.session_state.zoom_level:
+    st.session_state.zoom_level = zoom_level
+    st.rerun()
+
 show_rider_power = st.sidebar.checkbox("Show Rider Power", value=True, key="show_rider_power")
 show_battery_power = st.sidebar.checkbox("Show Battery Power", value=True, key="show_battery_power")
 
@@ -221,10 +243,16 @@ if not df_s.empty:
 else:
     df_filtered_s = pd.DataFrame()
 
-# Calculate x-axis range
+# Calculate x-axis range with zoom
 if not df_pp.empty or not df_s.empty:
     time_span = max_time - min_time if show_full else time_range[1] - time_range[0]
-    x_range = [min_time if show_full else time_range[0], max_time if show_full else time_range[1]]
+    if show_full:
+        x_range = [min_time, max_time]
+    else:
+        time_center = (time_range[0] + time_range[1]) / 2
+        zoomed_span = time_span * zoom_level
+        x_range = [time_center - zoomed_span / 2, time_center + zoomed_span / 2]
+        x_range = [max(min_time, x_range[0]), min(max_time, x_range[1])]
 else:
     x_range = [0, 10000]
 
@@ -349,24 +377,35 @@ with st.expander("Power vs. Time Comparison", expanded=True):
                 opacity=0.7,
                 hovertemplate="Time: %{x:.2f} ms<br>Rider Power: %{y:.2f} W<extra></extra>"
             ))
+        if selected_ride == "Zero to 25" and not df_graph_pp.empty:
+            fig_pp.add_trace(go.Scatter(
+                x=df_graph_pp["Time"],
+                y=df_graph_pp["KMPH"],
+                mode="lines",
+                name="Speed (KMPH)",
+                line=dict(color="#1e90ff", width=2, dash="dash"),
+                opacity=0.7,
+                yaxis="y2",
+                hovertemplate="Time: %{x:.2f} ms<br>Speed: %{y:.2f} KMPH<extra></extra>"
+            ))
         power_max_pp = max(df_graph_pp["Battery Power"].max() if show_battery_power and not df_graph_pp.empty else 0,
                            df_graph_pp["Rider Power"].max() if show_rider_power and not df_graph_pp.empty else 0)
         power_min_pp = min(df_graph_pp["Battery Power"].min() if show_battery_power and not df_graph_pp.empty else float('inf'),
                            df_graph_pp["Rider Power"].min() if show_rider_power and not df_graph_pp.empty else float('inf'))
         y_range_pp = [min(0, power_min_pp * 0.9), max(150, power_max_pp * 1.3)] if power_max_pp > 0 else [0, 150]
-        fig_pp.update_layout(
-            title=f"PowerPedal: {selected_ride}",
-            xaxis_title="Time (milliseconds)",
-            yaxis_title="Power (W)",
-            xaxis=dict(range=x_range, fixedrange=False),  # Allow horizontal panning
-            yaxis=dict(range=y_range_pp, fixedrange=True),  # Prevent vertical panning
-            dragmode="pan",
-            hovermode="closest",
-            template="plotly_white",
-            height=None,
-            margin=dict(t=50, b=80, l=5, r=5),
-            autosize=True,
-            legend=dict(
+        layout_updates = {
+            "title": f"PowerPedal: {selected_ride}",
+            "xaxis_title": "Time (milliseconds)",
+            "yaxis_title": "Power (W)",
+            "xaxis": dict(range=x_range, fixedrange=False),
+            "yaxis": dict(range=y_range_pp, fixedrange=True),
+            "dragmode": "pan",
+            "hovermode": "closest",
+            "template": "plotly_white",
+            "height": None,
+            "margin": dict(t=50, b=80, l=5, r=5),
+            "autosize": True,
+            "legend": dict(
                 orientation="h",
                 yanchor="top",
                 y=-0.2,
@@ -374,7 +413,20 @@ with st.expander("Power vs. Time Comparison", expanded=True):
                 x=0.5,
                 font=dict(size=12)
             )
-        )
+        }
+        if selected_ride == "Zero to 25" and not df_graph_pp.empty:
+            speed_max_pp = df_graph_pp["KMPH"].max()
+            speed_min_pp = df_graph_pp["KMPH"].min()
+            y_range_speed_pp = [min(0, speed_min_pp * 0.9), max(30, speed_max_pp * 1.1)]
+            layout_updates["yaxis2"] = dict(
+                title="Speed (KMPH)",
+                overlaying="y",
+                side="right",
+                range=y_range_speed_pp,
+                fixedrange=True,
+                showgrid=False
+            )
+        fig_pp.update_layout(**layout_updates)
         st.plotly_chart(
             fig_pp,
             use_container_width=True,
@@ -383,7 +435,7 @@ with st.expander("Power vs. Time Comparison", expanded=True):
                 'displayModeBar': True,
                 'displaylogo': False,
                 'responsive': True,
-                'scrollZoom': False,  # Disable scroll zoom
+                'scrollZoom': False,
                 'toImageButtonOptions': {
                     'format': 'png',
                     'filename': 'PowerPedal_Graph',
@@ -391,7 +443,7 @@ with st.expander("Power vs. Time Comparison", expanded=True):
                     'width': 800,
                     'scale': 1
                 },
-                'pan2d': True  # Explicitly enable 2D panning (horizontal only due to yaxis fixedrange)
+                'pan2d': True
             },
             key="power_graph_pp"
         )
@@ -420,24 +472,35 @@ with st.expander("Power vs. Time Comparison", expanded=True):
                 opacity=0.7,
                 hovertemplate="Time: %{x:.2f} ms<br>Rider Power: %{y:.2f} W<extra></extra>"
             ))
+        if selected_ride == "Zero to 25" and not df_graph_s.empty:
+            fig_s.add_trace(go.Scatter(
+                x=df_graph_s["Time"],
+                y=df_graph_s["KMPH"],
+                mode="lines",
+                name="Speed (KMPH)",
+                line=dict(color="#1e90ff", width=2, dash="dash"),
+                opacity=0.7,
+                yaxis="y2",
+                hovertemplate="Time: %{x:.2f} ms<br>Speed: %{y:.2f} KMPH<extra></extra>"
+            ))
         power_max_s = max(df_graph_s["Battery Power"].max() if show_battery_power and not df_graph_s.empty else 0,
                           df_graph_s["Rider Power"].max() if show_rider_power and not df_graph_s.empty else 0)
         power_min_s = min(df_graph_s["Battery Power"].min() if show_battery_power and not df_graph_s.empty else float('inf'),
                           df_graph_s["Rider Power"].min() if show_rider_power and not df_graph_s.empty else float('inf'))
         y_range_s = [min(0, power_min_s * 0.9), max(150, power_max_s * 1.3)] if power_max_s > 0 else [0, 150]
-        fig_s.update_layout(
-            title=f"Stock: {selected_ride}",
-            xaxis_title="Time (milliseconds)",
-            yaxis_title="Power (W)",
-            xaxis=dict(range=x_range, fixedrange=False),  # Allow horizontal panning
-            yaxis=dict(range=y_range_s, fixedrange=True),  # Prevent vertical panning
-            dragmode="pan",
-            hovermode="closest",
-            template="plotly_white",
-            height=None,
-            margin=dict(t=50, b=80, l=5, r=5),
-            autosize=True,
-            legend=dict(
+        layout_updates = {
+            "title": f"Stock: {selected_ride}",
+            "xaxis_title": "Time (milliseconds)",
+            "yaxis_title": "Power (W)",
+            "xaxis": dict(range=x_range, fixedrange=False),
+            "yaxis": dict(range=y_range_s, fixedrange=True),
+            "dragmode": "pan",
+            "hovermode": "closest",
+            "template": "plotly_white",
+            "height": None,
+            "margin": dict(t=50, b=80, l=5, r=5),
+            "autosize": True,
+            "legend": dict(
                 orientation="h",
                 yanchor="top",
                 y=-0.2,
@@ -445,7 +508,20 @@ with st.expander("Power vs. Time Comparison", expanded=True):
                 x=0.5,
                 font=dict(size=12)
             )
-        )
+        }
+        if selected_ride == "Zero to 25" and not df_graph_s.empty:
+            speed_max_s = df_graph_s["KMPH"].max()
+            speed_min_s = df_graph_s["KMPH"].min()
+            y_range_speed_s = [min(0, speed_min_s * 0.9), max(30, speed_max_s * 1.1)]
+            layout_updates["yaxis2"] = dict(
+                title="Speed (KMPH)",
+                overlaying="y",
+                side="right",
+                range=y_range_speed_s,
+                fixedrange=True,
+                showgrid=False
+            )
+        fig_s.update_layout(**layout_updates)
         st.plotly_chart(
             fig_s,
             use_container_width=True,
@@ -454,7 +530,7 @@ with st.expander("Power vs. Time Comparison", expanded=True):
                 'displayModeBar': True,
                 'displaylogo': False,
                 'responsive': True,
-                'scrollZoom': False,  # Disable scroll zoom
+                'scrollZoom': False,
                 'toImageButtonOptions': {
                     'format': 'png',
                     'filename': 'Stock_Graph',
@@ -462,12 +538,12 @@ with st.expander("Power vs. Time Comparison", expanded=True):
                     'width': 800,
                     'scale': 1
                 },
-                'pan2d': True  # Explicitly enable 2D panning (horizontal only due to yaxis fixedrange)
+                'pan2d': True
             },
             key="power_graph_s"
         )
 
-# CSS (updated for mobile view)
+# CSS (unchanged)
 st.markdown("""
     <style>
     .main .block-container {
@@ -596,16 +672,6 @@ st.markdown("""
         background: transparent;
         z-index: 1001;
     }
-    /* Full-screen Plotly chart */
-    .stPlotlyChart:-webkit-full-screen .js-plotly-plot,
-    .stPlotlyChart:fullscreen .js-plotly-plot {
-        height: 100vh !important;
-        width: 100vw !important;
-        margin: auto !important;
-        padding: 20px !important;
-        box-sizing: border-box !important;
-        overflow: visible !important;
-    }
     @media (max-width: 768px) {
         .title-container {
             flex-direction: column;
@@ -631,7 +697,7 @@ st.markdown("""
             height: 40vh !important;
             width: 100% !important;
             max-width: 100vw !important;
-            margin-bottom: 80px !important; /* Increased margin to prevent overlap */
+            margin-bottom: 60px !important;
         }
         .st-expander {
             min-height: auto !important;
@@ -641,12 +707,12 @@ st.markdown("""
         }
         h2 {
             font-size: 18px !important;
-            margin-bottom: 40px !important; /* Increased margin below headings to push Stock graph lower */
-            margin-top: 30px !important; /* Increased margin-top to ensure spacing */
+            margin-bottom: 30px !important;
+            margin-top: 20px !important;
         }
         .stColumns {
             flex-direction: column !important;
-            gap: 80px !important; /* Increased gap between PowerPedal and Stock graphs */
+            gap: 60px !important;
         }
         .stColumns > div {
             width: 100% !important;
@@ -671,18 +737,18 @@ st.markdown("""
             height: 35vh !important;
             width: 100% !important;
             max-width: 100vw !important;
-            margin-bottom: 70px !important; /* Increased margin for smaller screens */
+            margin-bottom: 50px !important;
         }
         h2 {
             font-size: 16px !important;
-            margin-bottom: 35px !important; /* Increased for smaller screens */
-            margin-top: 25px !important; /* Increased for smaller screens */
+            margin-bottom: 25px !important;
+            margin-top: 15px !important;
         }
     }
     </style>
 """, unsafe_allow_html=True)
 
-# JavaScript (unchanged from previous version)
+# JavaScript (unchanged)
 st.markdown("""
     <script>
     document.addEventListener("DOMContentLoaded", function() {
@@ -724,7 +790,7 @@ st.markdown("""
         function handleTouchMove(e) {
             if (isSwiping) {
                 touchEndX = e.changedTouches[0].screenX;
-                e.preventDefault(); // Prevent scrolling during swipe
+                e.preventDefault();
             }
         }
 
@@ -752,7 +818,7 @@ st.markdown("""
         [swipeArea, sidebar].forEach(element => {
             if (element) {
                 element.addEventListener('touchstart', handleTouchStart, { passive: false });
-                element.addEventListener('touchmove', handleTouchMove, { pseudo: false });
+                element.addEventListener('touchmove', handleTouchMove, { passive: false });
                 element.addEventListener('touchend', handleTouchEnd, { passive: false });
             }
         });
