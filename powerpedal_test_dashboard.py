@@ -4,6 +4,12 @@ import plotly.graph_objs as go
 import numpy as np
 import time
 
+# Helper function to convert seconds to minutes and seconds
+def seconds_to_min_sec(seconds):
+    minutes = int(seconds // 60)
+    remaining_seconds = seconds % 60
+    return f"{minutes} min {remaining_seconds:.1f} s"
+
 # Set page config with logo
 st.set_page_config(
     page_title="PowerPedal Dashboard",
@@ -45,7 +51,7 @@ csv_files = {
 def load_data(csv_url, _cache_buster):
     try:
         df = pd.read_csv(csv_url)
-        required_cols = ["Time", "Battery Power", "Rider Power", "KMPH"]
+        required_cols = ["Time", "Battery Power", "Rider Power", "KMPH", "Ride Distance"]
         missing_cols = [col for col in required_cols if col not in df.columns]
         if missing_cols:
             st.error(f"Missing columns in {csv_url}: {missing_cols}. Found: {list(df.columns)}")
@@ -68,7 +74,8 @@ def advanced_downsample(df, max_points):
         'Time': 'mean',
         'Battery Power': 'mean',
         'Rider Power': 'mean',
-        'KMPH': 'mean'
+        'KMPH': 'mean',
+        'Ride Distance': 'max'  # Use max for cumulative distance
     }).reset_index(drop=True)
     return df_downsampled
 
@@ -105,28 +112,22 @@ with st.spinner(f"Loading data for {selected_ride} (this may take a moment for l
     df_pp = load_data(csv_files[selected_ride]["PowerPedal"], cache_buster)
     df_s = load_data(csv_files[selected_ride]["Stock"], cache_buster)
 
-# Set time range to the intersection of both datasets
+# Set time range to the maximum range across both datasets
 if not df_pp.empty and not df_s.empty:
-    min_time = max(int(df_pp["Time"].min()), int(df_s["Time"].min()))
-    max_time = min(int(df_pp["Time"].max()), int(df_s["Time"].max()))
-    if "initialized_time_range" not in st.session_state or st.session_state.get('last_selected_ride') != selected_ride:
-        st.session_state.time_range = (min_time, max_time)
-        st.session_state.initialized_time_range = True
-        st.session_state.last_selected_ride = selected_ride
+    min_time = min(int(df_pp["Time"].min()), int(df_s["Time"].min()))
+    max_time = max(int(df_pp["Time"].max()), int(df_s["Time"].max()))
 elif not df_pp.empty:
     min_time, max_time = int(df_pp["Time"].min()), int(df_pp["Time"].max())
-    if "initialized_time_range" not in st.session_state or st.session_state.get('last_selected_ride') != selected_ride:
-        st.session_state.time_range = (min_time, max_time)
-        st.session_state.initialized_time_range = True
-        st.session_state.last_selected_ride = selected_ride
 elif not df_s.empty:
     min_time, max_time = int(df_s["Time"].min()), int(df_s["Time"].max())
-    if "initialized_time_range" not in st.session_state or st.session_state.get('last_selected_ride') != selected_ride:
-        st.session_state.time_range = (min_time, max_time)
-        st.session_state.initialized_time_range = True
-        st.session_state.last_selected_ride = selected_ride
 else:
     min_time, max_time = st.session_state.time_range
+
+# Update session state for time range if needed
+if "initialized_time_range" not in st.session_state or st.session_state.get('last_selected_ride') != selected_ride:
+    st.session_state.time_range = (min_time, max_time)
+    st.session_state.initialized_time_range = True
+    st.session_state.last_selected_ride = selected_ride
 
 # Full data view toggle
 show_full = st.sidebar.checkbox("Show Full Dataset", value=False, key="show_full")
@@ -189,10 +190,7 @@ else:
     start_time, end_time = st.session_state.time_range
     time_range = st.session_state.time_range
 
-# Downsampling factor (controlled by session state only)
-if "downsample_factor" not in st.session_state:
-    st.session_state.downsample_factor = 20
-
+# Downsampling factor
 downsample_factor = st.sidebar.slider(
     "Downsampling Factor (Higher = Less Clutter)",
     min_value=0,
@@ -200,7 +198,7 @@ downsample_factor = st.sidebar.slider(
     value=st.session_state.downsample_factor,
     step=1,
     key="downsample_factor",
-    help="Higher values reduce points for large datasets (e.g., 256 Hz for 2 hours).",
+    help="Higher values reduce points for large datasets.",
     on_change=lambda: st.session_state.update({"downsample_factor": st.session_state.downsample_factor})
 )
 
@@ -273,18 +271,26 @@ with st.expander("Power vs. Time Comparison", expanded=True):
     if not df_filtered_pp.empty:
         time_hours_pp = df_filtered_pp["Time"] / 3600000  # ms to hours
         energy_battery_pp = np.trapz(df_filtered_pp["Battery Power"], time_hours_pp)
+        distance_pp = df_filtered_pp["Ride Distance"].max() if "Ride Distance" in df_filtered_pp.columns else 0
         duration_pp = (df_filtered_pp["Time"].max() - df_filtered_pp["Time"].min()) / 1000
+        duration_pp_display = seconds_to_min_sec(duration_pp)
     else:
         energy_battery_pp = 0
+        distance_pp = 0
         duration_pp = 0
+        duration_pp_display = "0 min 0 s"
 
     if not df_filtered_s.empty:
         time_hours_s = df_filtered_s["Time"] / 3600000  # ms to hours
         energy_battery_s = np.trapz(df_filtered_s["Battery Power"], time_hours_s)
+        distance_s = df_filtered_s["Ride Distance"].max() if "Ride Distance" in df_filtered_s.columns else 0
         duration_s = (df_filtered_s["Time"].max() - df_filtered_s["Time"].min()) / 1000
+        duration_s_display = seconds_to_min_sec(duration_s)
     else:
         energy_battery_s = 0
+        distance_s = 0
         duration_s = 0
+        duration_s_display = "0 min 0 s"
 
     # Metrics in a centered container
     with st.container():
@@ -296,22 +302,30 @@ with st.expander("Power vs. Time Comparison", expanded=True):
                         Total Battery Energy (PowerPedal)<br>{:.2f} Wh
                     </div>
                     <div class="metric-box rider">
-                        Ride Duration (PowerPedal)<br>{:.2f} s
+                        Ride Duration (PowerPedal)<br>{}
+                    </div>
+                    <div class="metric-box distance">
+                        Ride Distance (PowerPedal)<br>{:.2f} km
                     </div>
                     <div class="metric-box battery-stock">
                         Total Battery Energy (Stock)<br>{:.2f} Wh
                     </div>
                     <div class="metric-box rider-stock">
-                        Ride Duration (Stock)<br>{:.2f} s
+                        Ride Duration (Stock)<br>{}
+                    </div>
+                    <div class="metric-box distance-stock">
+                        Ride Distance (Stock)<br>{:.2f} km
                     </div>
                 </div>
             </div>
         """.format(
             selected_ride,
             energy_battery_pp,
-            duration_pp,
+            duration_pp_display,
+            distance_pp,
             energy_battery_s,
-            duration_s
+            duration_s_display,
+            distance_s
         ), unsafe_allow_html=True)
 
     # Prepare data for graphing
@@ -554,6 +568,10 @@ st.markdown("""
         background-color: #90e0ef;
         border: 2px solid #90e0ef;
     }
+    .metric-box.distance {
+        background-color: #d3d3d3;
+        border: 2px solid #d3d3d3;
+    }
     .metric-box.battery-stock {
         background-color: #ff6200;
         border: 2px solid #ff6200;
@@ -561,6 +579,10 @@ st.markdown("""
     .metric-box.rider-stock {
         background-color: #008080;
         border: 2px solid #008080;
+    }
+    .metric-box.distance-stock {
+        background-color: #a9a9a9;
+        border: 2px solid #a9a9a9;
     }
     @media (max-width: 768px) {
         .title-container {
@@ -585,6 +607,7 @@ st.markdown("""
         }
         .stPlotlyChart {
             height: 50vh !important;
+            width: 100vw !important;
         }
         .st-expander {
             min-height: 50vh !important;
@@ -612,6 +635,7 @@ st.markdown("""
         }
         .stPlotlyChart {
             height: 40vh !important;
+            width: 100vw !important;
         }
         .st-expander {
             min-height: 40vh !important;
