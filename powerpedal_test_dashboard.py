@@ -467,7 +467,7 @@ with st.expander("Power vs. Time Comparison", expanded=True):
             key="power_graph_s"
         )
 
-# CSS (unchanged from previous version)
+# CSS (updated for mobile view)
 st.markdown("""
     <style>
     .main .block-container {
@@ -620,7 +620,8 @@ st.markdown("""
         .stPlotlyChart {
             height: 40vh !important;
             width: 100% !important;
-            margin-bottom: 40px !important;
+            max-width: 100vw !important;
+            margin-bottom: 60px !important; /* Increased margin to prevent overlap */
         }
         .st-expander {
             min-height: auto !important;
@@ -630,11 +631,12 @@ st.markdown("""
         }
         h2 {
             font-size: 18px !important;
-            margin-bottom: 15px !important;
+            margin-bottom: 30px !important; /* Increased margin below headings to push Stock graph lower */
+            margin-top: 20px !important; /* Added margin-top to ensure spacing */
         }
         .stColumns {
             flex-direction: column !important;
-            gap: 40px !important;
+            gap: 60px !important; /* Increased gap between PowerPedal and Stock graphs */
         }
         .stColumns > div {
             width: 100% !important;
@@ -657,7 +659,14 @@ st.markdown("""
         }
         .stPlotlyChart {
             height: 35vh !important;
-            margin-bottom: 30px !important;
+            width: 100% !important;
+            max-width: 100vw !important;
+            margin-bottom: 50px !important; /* Adjusted margin for smaller screens */
+        }
+        h2 {
+            font-size: 16px !important;
+            margin-bottom: 25px !important; /* Adjusted for smaller screens */
+            margin-top: 15px !important; /* Adjusted for smaller screens */
         }
     }
     </style>
