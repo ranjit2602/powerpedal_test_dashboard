@@ -16,7 +16,7 @@ def format_distance(meters):
     else:
         return f"{meters / 1000:.2f} km"
 
-# Set page config
+# Set page config (unchanged, ensures sidebar is open by default)
 st.set_page_config(
     page_title="PowerPedal Dashboard",
     page_icon="https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/logo.png",
@@ -24,7 +24,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Display logo and title
+# Display logo and title (unchanged)
 st.markdown("""
     <div class="title-container">
         <img src="https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/logo.png" class="logo">
@@ -84,7 +84,7 @@ def advanced_downsample(df, max_points):
     }).reset_index(drop=True)
     return df_downsampled
 
-# Initialize session state
+# Initialize session state (unchanged)
 if "time_range" not in st.session_state:
     st.session_state.time_range = (0, 10000)
 if "downsample_factor" not in st.session_state:
@@ -96,7 +96,7 @@ if "smoothing" not in st.session_state:
 if "selected_ride" not in st.session_state:
     st.session_state.selected_ride = list(csv_files.keys())[0]
 
-# Sidebar
+# Sidebar (unchanged)
 st.sidebar.header("Filter Options")
 st.sidebar.markdown("Select a ride, adjust the time range, select metrics, and control display options.")
 
@@ -107,13 +107,13 @@ selected_ride = st.sidebar.selectbox(
     key="selected_ride"
 )
 
-# Load data
+# Load data (unchanged)
 with st.spinner(f"Loading data for {selected_ride}..."):
     cache_buster = str(time.time())
     df_pp = load_data(csv_files[selected_ride]["PowerPedal"], cache_buster)
     df_s = load_data(csv_files[selected_ride]["Stock"], cache_buster)
 
-# Set time range
+# Set time range (unchanged)
 if not df_pp.empty and not df_s.empty:
     min_time = min(int(df_pp["Time"].min()), int(df_s["Time"].min()))
     max_time = max(int(df_pp["Time"].max()), int(df_s["Time"].max()))
@@ -129,7 +129,7 @@ if "initialized_time_range" not in st.session_state or st.session_state.get('las
     st.session_state.initialized_time_range = True
     st.session_state.last_selected_ride = selected_ride
 
-# Sidebar controls
+# Sidebar controls (unchanged)
 show_full = st.sidebar.checkbox("Show Full Dataset", value=False, key="show_full")
 
 if not df_pp.empty or not df_s.empty:
@@ -210,7 +210,7 @@ if window_size != st.session_state.window_size:
 show_rider_power = st.sidebar.checkbox("Show Rider Power", value=True, key="show_rider_power")
 show_battery_power = st.sidebar.checkbox("Show Battery Power", value=True, key="show_battery_power")
 
-# Filter data
+# Filter data (unchanged)
 if not df_pp.empty:
     df_filtered_pp = df_pp.copy() if show_full else df_pp[(df_pp["Time"] >= time_range[0]) & (df_pp["Time"] <= time_range[1])]
 else:
@@ -221,14 +221,14 @@ if not df_s.empty:
 else:
     df_filtered_s = pd.DataFrame()
 
-# Calculate x-axis range
+# Calculate x-axis range (unchanged)
 if not df_pp.empty or not df_s.empty:
     time_span = max_time - min_time if show_full else time_range[1] - time_range[0]
     x_range = [min_time if show_full else time_range[0], max_time if show_full else time_range[1]]
 else:
     x_range = [0, 10000]
 
-# Prepare data for graphing
+# Prepare data for graphing (unchanged)
 if not df_filtered_pp.empty:
     df_graph_pp = df_filtered_pp.copy()
     max_points = max(50, len(df_graph_pp) // downsample_factor) if downsample_factor > 0 else len(df_graph_pp)
@@ -255,7 +255,7 @@ if not df_filtered_s.empty:
 else:
     df_graph_s = pd.DataFrame()
 
-# Graph and metrics
+# Graph and metrics (unchanged)
 with st.expander("Power vs. Time Comparison", expanded=True):
     # Calculate metrics (unchanged)
     if not df_filtered_pp.empty:
@@ -286,7 +286,7 @@ with st.expander("Power vs. Time Comparison", expanded=True):
         duration_s = 0
         duration_s_display = "0 min 0 s"
 
-    # Metrics display
+    # Metrics display (unchanged)
     with st.container():
         st.markdown("""
             <div class="metrics-container">
@@ -322,10 +322,10 @@ with st.expander("Power vs. Time Comparison", expanded=True):
             distance_s_display
         ), unsafe_allow_html=True)
 
-    # Create columns for graphs
+    # Create columns for graphs (unchanged)
     col1, col2 = st.columns([1, 1], gap="large")
 
-    # PowerPedal Graph
+    # PowerPedal Graph (unchanged)
     with col1:
         st.markdown("<h2>PowerPedal</h2>", unsafe_allow_html=True)
         fig_pp = go.Figure()
@@ -358,8 +358,8 @@ with st.expander("Power vs. Time Comparison", expanded=True):
             title=f"PowerPedal: {selected_ride}",
             xaxis_title="Time (milliseconds)",
             yaxis_title="Power (W)",
-            xaxis=dict(range=x_range, fixedrange=False),  # Allow horizontal panning
-            yaxis=dict(range=y_range_pp, fixedrange=True),  # Prevent vertical panning
+            xaxis=dict(range=x_range, fixedrange=False),
+            yaxis=dict(range=y_range_pp, fixedrange=True),
             dragmode="pan",
             hovermode="closest",
             template="plotly_white",
@@ -383,7 +383,7 @@ with st.expander("Power vs. Time Comparison", expanded=True):
                 'displayModeBar': True,
                 'displaylogo': False,
                 'responsive': True,
-                'scrollZoom': False,  # Disable scroll zoom
+                'scrollZoom': False,
                 'toImageButtonOptions': {
                     'format': 'png',
                     'filename': 'PowerPedal_Graph',
@@ -391,12 +391,12 @@ with st.expander("Power vs. Time Comparison", expanded=True):
                     'width': 800,
                     'scale': 1
                 },
-                'pan2d': True  # Explicitly enable 2D panning (horizontal only due to yaxis fixedrange)
+                'pan2d': True
             },
             key="power_graph_pp"
         )
 
-    # Stock System Graph
+    # Stock System Graph (unchanged)
     with col2:
         st.markdown("<h2>Stock</h2>", unsafe_allow_html=True)
         fig_s = go.Figure()
@@ -429,8 +429,8 @@ with st.expander("Power vs. Time Comparison", expanded=True):
             title=f"Stock: {selected_ride}",
             xaxis_title="Time (milliseconds)",
             yaxis_title="Power (W)",
-            xaxis=dict(range=x_range, fixedrange=False),  # Allow horizontal panning
-            yaxis=dict(range=y_range_s, fixedrange=True),  # Prevent vertical panning
+            xaxis=dict(range=x_range, fixedrange=False),
+            yaxis=dict(range=y_range_s, fixedrange=True),
             dragmode="pan",
             hovermode="closest",
             template="plotly_white",
@@ -454,7 +454,7 @@ with st.expander("Power vs. Time Comparison", expanded=True):
                 'displayModeBar': True,
                 'displaylogo': False,
                 'responsive': True,
-                'scrollZoom': False,  # Disable scroll zoom
+                'scrollZoom': False,
                 'toImageButtonOptions': {
                     'format': 'png',
                     'filename': 'Stock_Graph',
@@ -462,12 +462,12 @@ with st.expander("Power vs. Time Comparison", expanded=True):
                     'width': 800,
                     'scale': 1
                 },
-                'pan2d': True  # Explicitly enable 2D panning (horizontal only due to yaxis fixedrange)
+                'pan2d': True
             },
             key="power_graph_s"
         )
 
-# CSS (unchanged from previous version)
+# CSS (updated to fix toggle button visibility, no appearance changes)
 st.markdown("""
     <style>
     .main .block-container {
@@ -580,12 +580,32 @@ st.markdown("""
         z-index: 1000 !important;
         width: 80% !important;
         max-width: 300px !important;
+        /* No background-color or color changes to preserve Streamlit default */
     }
     [data-testid="stSidebar"][aria-expanded="false"] {
         transform: translateX(-100%) !important;
     }
     [data-testid="stSidebar"][aria-expanded="true"] {
         transform: translateX(0) !important;
+    }
+    /* Ensure sidebar toggle button is always visible on mobile */
+    [data-testid="stSidebarNav"] button {
+        display: block !important;
+        visibility: visible !important;
+        position: fixed !important;
+        top: 10px !important;
+        right: 10px !important;
+        z-index: 1002 !important;
+        background-color: transparent !important; /* Match Streamlit default */
+        border: none !important;
+        padding: 8px !important;
+        cursor: pointer !important;
+    }
+    /* Style the hamburger/close icon */
+    [data-testid="stSidebarNav"] button > svg {
+        width: 24px !important;
+        height: 24px !important;
+        opacity: 1 !important;
     }
     .swipe-area {
         position: fixed;
@@ -663,7 +683,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# JavaScript (unchanged from previous version)
+# JavaScript (updated to fix toggle button visibility and ensure sidebar open by default)
 st.markdown("""
     <script>
     document.addEventListener("DOMContentLoaded", function() {
@@ -675,26 +695,53 @@ st.markdown("""
         let touchEndX = 0;
         let isSwiping = false;
 
-        // Initialize sidebar state
-        if (window.innerWidth <= 768 && sidebar && sidebarToggle) {
+        // Ensure sidebar is open by default
+        if (sidebar && sidebarToggle) {
             if (sidebar.getAttribute('aria-expanded') !== 'true') {
-                sidebarToggle.click();
+                sidebarToggle.click(); // Open sidebar if not already open
             }
         }
 
-        // Restore scroll position
+        // Ensure toggle button is always visible
+        if (sidebarToggle) {
+            setTimeout(() => {
+                sidebarToggle.style.display = 'block';
+                sidebarToggle.style.visibility = 'visible';
+                const svg = sidebarToggle.querySelector('svg');
+                if (svg) {
+                    svg.style.width = '24px';
+                    svg.style.height = '24px';
+                    svg.style.opacity = '1';
+                }
+            }, 100);
+            // Reapply visibility after clicks
+            sidebarToggle.addEventListener('click', () => {
+                setTimeout(() => {
+                    sidebarToggle.style.display = 'block';
+                    sidebarToggle.style.visibility = 'visible';
+                    const svg = sidebarToggle.querySelector('svg');
+                    if (svg) {
+                        svg.style.width = '24px';
+                        svg.style.height = '24px';
+                        svg.style.opacity = '1';
+                    }
+                }, 100);
+            });
+        }
+
+        // Restore scroll position (unchanged)
         main.scrollTop = lastScrollPosition;
         main.addEventListener('scroll', () => {
             lastScrollPosition = main.scrollTop;
             sessionStorage.setItem('scrollPosition', lastScrollPosition);
         });
 
-        // Create swipe area
+        // Create swipe area (unchanged)
         const swipeArea = document.createElement('div');
         swipeArea.className = 'swipe-area';
         document.body.appendChild(swipeArea);
 
-        // Improved swipe handling
+        // Swipe handling (unchanged)
         function handleTouchStart(e) {
             if (e.target.closest('.swipe-area') || e.target.closest('[data-testid="stSidebar"]')) {
                 touchStartX = e.changedTouches[0].screenX;
@@ -705,7 +752,7 @@ st.markdown("""
         function handleTouchMove(e) {
             if (isSwiping) {
                 touchEndX = e.changedTouches[0].screenX;
-                e.preventDefault(); // Prevent scrolling during swipe
+                e.preventDefault();
             }
         }
 
@@ -729,7 +776,7 @@ st.markdown("""
             }
         }
 
-        // Add event listeners to both swipe area and sidebar
+        // Add event listeners (unchanged)
         [swipeArea, sidebar].forEach(element => {
             if (element) {
                 element.addEventListener('touchstart', handleTouchStart, { passive: false });
@@ -738,12 +785,24 @@ st.markdown("""
             }
         });
 
-        // Handle window resize
+        // Handle window resize (updated to ensure toggle button visibility)
         window.addEventListener('resize', () => {
             window.dispatchEvent(new Event('resize'));
+            if (sidebarToggle) {
+                setTimeout(() => {
+                    sidebarToggle.style.display = 'block';
+                    sidebarToggle.style.visibility = 'visible';
+                    const svg = sidebarToggle.querySelector('svg');
+                    if (svg) {
+                        svg.style.width = '24px';
+                        svg.style.height = '24px';
+                        svg.style.opacity = '1';
+                    }
+                }, 100);
+            }
         });
 
-        // Mutation observer for scroll retention
+        // Mutation observer for scroll retention (unchanged)
         const observer = new MutationObserver(() => {
             requestAnimationFrame(() => {
                 main.scrollTop = lastScrollPosition;
