@@ -596,6 +596,16 @@ st.markdown("""
         background: transparent;
         z-index: 1001;
     }
+    /* Full-screen Plotly chart */
+    .stPlotlyChart:-webkit-full-screen .js-plotly-plot,
+    .stPlotlyChart:fullscreen .js-plotly-plot {
+        height: 100vh !important;
+        width: 100vw !important;
+        margin: auto !important;
+        padding: 20px !important;
+        box-sizing: border-box !important;
+        overflow: visible !important;
+    }
     @media (max-width: 768px) {
         .title-container {
             flex-direction: column;
@@ -621,7 +631,7 @@ st.markdown("""
             height: 40vh !important;
             width: 100% !important;
             max-width: 100vw !important;
-            margin-bottom: 60px !important; /* Increased margin to prevent overlap */
+            margin-bottom: 80px !important; /* Increased margin to prevent overlap */
         }
         .st-expander {
             min-height: auto !important;
@@ -631,12 +641,12 @@ st.markdown("""
         }
         h2 {
             font-size: 18px !important;
-            margin-bottom: 30px !important; /* Increased margin below headings to push Stock graph lower */
-            margin-top: 20px !important; /* Added margin-top to ensure spacing */
+            margin-bottom: 40px !important; /* Increased margin below headings to push Stock graph lower */
+            margin-top: 30px !important; /* Increased margin-top to ensure spacing */
         }
         .stColumns {
             flex-direction: column !important;
-            gap: 60px !important; /* Increased gap between PowerPedal and Stock graphs */
+            gap: 80px !important; /* Increased gap between PowerPedal and Stock graphs */
         }
         .stColumns > div {
             width: 100% !important;
@@ -661,12 +671,12 @@ st.markdown("""
             height: 35vh !important;
             width: 100% !important;
             max-width: 100vw !important;
-            margin-bottom: 50px !important; /* Adjusted margin for smaller screens */
+            margin-bottom: 70px !important; /* Increased margin for smaller screens */
         }
         h2 {
             font-size: 16px !important;
-            margin-bottom: 25px !important; /* Adjusted for smaller screens */
-            margin-top: 15px !important; /* Adjusted for smaller screens */
+            margin-bottom: 35px !important; /* Increased for smaller screens */
+            margin-top: 25px !important; /* Increased for smaller screens */
         }
     }
     </style>
@@ -742,7 +752,7 @@ st.markdown("""
         [swipeArea, sidebar].forEach(element => {
             if (element) {
                 element.addEventListener('touchstart', handleTouchStart, { passive: false });
-                element.addEventListener('touchmove', handleTouchMove, { passive: false });
+                element.addEventListener('touchmove', handleTouchMove, { pseudo: false });
                 element.addEventListener('touchend', handleTouchEnd, { passive: false });
             }
         });
