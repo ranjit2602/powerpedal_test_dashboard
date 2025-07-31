@@ -272,7 +272,7 @@ if not df_pp.empty or not df_s.empty:
 else:
     x_range = [0, 10000]
 
-# Prepare data for graphing (moved before graph plotting)
+# Prepare data for graphing
 if not df_filtered_pp.empty:
     df_graph_pp = df_filtered_pp.copy()
     max_points = 1000
@@ -387,7 +387,7 @@ with st.expander("Power vs. Time Comparison", expanded=True):
                 y=df_graph_pp["Battery Power"],
                 mode="lines",
                 name="Battery Power (W)",
-                line=dict(color="#4db6d1", width=2),
+                line=dict(color="#00ff00", width=2),  # Bright green
                 opacity=0.7,
                 hovertemplate="Time: %{x:.2f} ms<br>Battery Power: %{y:.2f} W<extra></extra>"
             ))
@@ -397,7 +397,7 @@ with st.expander("Power vs. Time Comparison", expanded=True):
                 y=df_graph_pp["Rider Power"],
                 mode="lines",
                 name="Rider Power (W)",
-                line=dict(color="#6fc7e1", width=2),
+                line=dict(color="#ff00ff", width=2),  # Bright magenta
                 opacity=0.7,
                 hovertemplate="Time: %{x:.2f} ms<br>Rider Power: %{y:.2f} W<extra></extra>"
             ))
@@ -452,7 +452,7 @@ with st.expander("Power vs. Time Comparison", expanded=True):
                 y=df_graph_s["Battery Power"],
                 mode="lines",
                 name="Battery Power (W)",
-                line=dict(color="#ff8c00", width=2),
+                line=dict(color="#00ff00", width=2),  # Bright green
                 opacity=0.7,
                 hovertemplate="Time: %{x:.2f} ms<br>Battery Power: %{y:.2f} W<extra></extra>"
             ))
@@ -462,7 +462,7 @@ with st.expander("Power vs. Time Comparison", expanded=True):
                 y=df_graph_s["Rider Power"],
                 mode="lines",
                 name="Rider Power (W)",
-                line=dict(color="#ffa733", width=2),
+                line=dict(color="#ff00ff", width=2),  # Bright magenta
                 opacity=0.7,
                 hovertemplate="Time: %{x:.2f} ms<br>Rider Power: %{y:.2f} W<extra></extra>"
             ))
@@ -511,8 +511,8 @@ with st.expander("Power vs. Time Comparison", expanded=True):
 st.markdown("""
     <style>
     .main .block-container {
-        padding-left: 1rem !important;
-        padding-right: 1rem !important;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
         padding-top: 0.5rem !important;
         padding-bottom: 1rem !important;
         max-width: 100% !important;
@@ -540,7 +540,8 @@ st.markdown("""
         width: 100% !important;
         max-width: 100vw !important;
         margin: 0 auto !important;
-        overflow: hidden !important;
+        overflow-x: auto !important;
+        overflow-y: hidden !important;
         box-sizing: border-box !important;
     }
     .st-expander {
@@ -550,12 +551,16 @@ st.markdown("""
         padding: 10px;
         box-sizing: border-box !important;
     }
+    .stColumns {
+        padding: 0 !important;
+    }
     .stColumns > div {
         display: flex !important;
-        flex: 1 !important;
+        flex: 1 1 100% !important;
         width: 100% !important;
         max-width: 100% !important;
         box-sizing: border-box !important;
+        padding: 0 5px !important;
     }
     .metrics-container {
         background: none !important;
@@ -631,7 +636,7 @@ st.markdown("""
             padding: 8px;
         }
         .stPlotlyChart {
-            height: 50vh !important;
+            height: 45vh !important;
             width: 100% !important;
             max-width: 100vw !important;
         }
