@@ -410,13 +410,13 @@ with st.expander("Power vs. Time Comparison", expanded=True):
             title=f"PowerPedal: {selected_ride}",
             xaxis_title="Time (milliseconds)",
             yaxis_title="Power (W)",
-            xaxis=dict(range=x_range, fixedrange=False),
-            yaxis=dict(range=y_range_pp, fixedrange=True),
+            xaxis=dict(range=x_range, fixedrange=False),  # Allow zooming/panning
+            yaxis=dict(range=y_range_pp, fixedrange=False),
             dragmode="pan",
             hovermode="closest",
             template="plotly_white",
-            height=600,
-            margin=dict(t=70, b=100, l=10, r=10),
+            height=None,  # Let CSS control height
+            margin=dict(t=50, b=80, l=5, r=5),
             autosize=True,
             legend=dict(
                 orientation="h",
@@ -424,20 +424,25 @@ with st.expander("Power vs. Time Comparison", expanded=True):
                 y=-0.2,
                 xanchor="center",
                 x=0.5,
-                font=dict(size=14)
+                font=dict(size=12)
             )
         )
         st.plotly_chart(
             fig_pp,
             use_container_width=True,
             config={
-                'modeBarButtons': [['toImage', 'pan2d']],
+                'modeBarButtonsToRemove': ['zoom2d', 'select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d'],
                 'displayModeBar': True,
                 'displaylogo': False,
-                'showTips': False,
                 'responsive': True,
-                'autosizable': True,
-                'scrollZoom': False
+                'scrollZoom': True,  # Enable pinch-to-zoom
+                'toImageButtonOptions': {
+                    'format': 'png',
+                    'filename': 'PowerPedal_Graph',
+                    'height': 600,
+                    'width': 800,
+                    'scale': 1
+                }
             },
             key="power_graph_pp"
         )
@@ -475,13 +480,13 @@ with st.expander("Power vs. Time Comparison", expanded=True):
             title=f"Stock: {selected_ride}",
             xaxis_title="Time (milliseconds)",
             yaxis_title="Power (W)",
-            xaxis=dict(range=x_range, fixedrange=False),
-            yaxis=dict(range=y_range_s, fixedrange=True),
+            xaxis=dict(range=x_range, fixedrange=False),  # Allow zooming/panning
+            yaxis=dict(range=y_range_s, fixedrange=False),
             dragmode="pan",
             hovermode="closest",
             template="plotly_white",
-            height=600,
-            margin=dict(t=70, b=100, l=10, r=10),
+            height=None,  # Let CSS control height
+            margin=dict(t=50, b=80, l=5, r=5),
             autosize=True,
             legend=dict(
                 orientation="h",
@@ -489,34 +494,40 @@ with st.expander("Power vs. Time Comparison", expanded=True):
                 y=-0.2,
                 xanchor="center",
                 x=0.5,
-                font=dict(size=14)
+                font=dict(size=12)
             )
         )
         st.plotly_chart(
             fig_s,
             use_container_width=True,
             config={
-                'modeBarButtons': [['toImage', 'pan2d']],
+                'modeBarButtonsToRemove': ['zoom2d', 'select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d'],
                 'displayModeBar': True,
                 'displaylogo': False,
-                'showTips': False,
                 'responsive': True,
-                'autosizable': True,
-                'scrollZoom': False
+                'scrollZoom': True,  # Enable pinch-to-zoom
+                'toImageButtonOptions': {
+                    'format': 'png',
+                    'filename': 'Stock_Graph',
+                    'height': 600,
+                    'width': 800,
+                    'scale': 1
+                }
             },
             key="power_graph_s"
         )
 
-# Add custom CSS for mobile responsiveness, anchoring, and styling
+# Add custom CSS for mobile responsiveness, sidebar, and styling
 st.markdown("""
     <style>
     .main .block-container {
-        padding-left: 0 !important;
-        padding-right: 0 !important;
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
         padding-top: 0.5rem !important;
-        padding-bottom: 1rem !important;
+        padding-bottom: 0.5rem !important;
         max-width: 100% !important;
         box-sizing: border-box !important;
+        overflow-x: hidden !important;
     }
     .title-container {
         display: flex;
@@ -540,12 +551,11 @@ st.markdown("""
         width: 100% !important;
         max-width: 100vw !important;
         margin: 0 auto !important;
-        overflow-x: auto !important;
-        overflow-y: hidden !important;
+        overflow: visible !important;
         box-sizing: border-box !important;
     }
     .st-expander {
-        min-height: 600px !important;
+        min-height: 100% !important;
         border: 1px solid #ddd;
         border-radius: 5px;
         padding: 10px;
@@ -553,14 +563,17 @@ st.markdown("""
     }
     .stColumns {
         padding: 0 !important;
+        margin: 0 !important;
+        display: flex !important;
+        flex-wrap: wrap !important;
     }
     .stColumns > div {
-        display: flex !important;
         flex: 1 1 100% !important;
+        min-width: 0 !important;
         width: 100% !important;
         max-width: 100% !important;
         box-sizing: border-box !important;
-        padding: 0 5px !important;
+        padding: 5px !important;
     }
     .metrics-container {
         background: none !important;
@@ -591,29 +604,46 @@ st.markdown("""
         box-sizing: border-box;
     }
     .metric-box.battery {
-        background-color: #4db6d1; /* Base blue for PowerPedal Battery */
+        background-color: #4db6d1;
         border: 2px solid #4db6d1;
     }
     .metric-box.rider {
-        background-color: #6fc7e1; /* Lighter blue for PowerPedal Duration */
+        background-color: #6fc7e1;
         border: 2px solid #6fc7e1;
     }
     .metric-box.distance {
-        background-color: #2e8ba3; /* Darker blue for PowerPedal Distance */
+        background-color: #2e8ba3;
         border: 2px solid #2e8ba3;
     }
     .metric-box.battery-stock {
-        background-color: #ff8c00; /* Base orange for Stock Battery */
+        background-color: #ff8c00;
         border: 2px solid #ff8c00;
     }
     .metric-box.rider-stock {
-        background-color: #ffa733; /* Lighter orange for Stock Duration */
+        background-color: #ffa733;
         border: 2px solid #ffa733;
     }
     .metric-box.distance-stock {
-        background-color: #cc6f00; /* Darker orange for Stock Distance */
+        background-color: #cc6f00;
         border: 2px solid #cc6f00;
     }
+    /* Sidebar styling */
+    [data-testid="stSidebar"] {
+        transition: transform 0.3s ease-in-out !important;
+        touch-action: none !important;
+        -webkit-overflow-scrolling: touch !important;
+        overscroll-behavior: contain !important;
+    }
+    [data-testid="stSidebar"][aria-expanded="false"] {
+        transform: translateX(-100%) !important;
+    }
+    [data-testid="stSidebar"][aria-expanded="true"] {
+        transform: translateX(0) !important;
+    }
+    [data-testid="stSidebarNav"] {
+        touch-action: none !important;
+    }
+    /* Mobile-specific styles */
     @media (max-width: 768px) {
         .title-container {
             flex-direction: column;
@@ -636,18 +666,21 @@ st.markdown("""
             padding: 8px;
         }
         .stPlotlyChart {
-            height: 45vh !important;
+            height: 40vh !important;
             width: 100% !important;
             max-width: 100vw !important;
         }
         .st-expander {
-            min-height: 50vh !important;
+            min-height: auto !important;
         }
         .stSlider label, .stCheckbox label, .stNumberInput label, .stSelectbox label {
             font-size: 12px !important;
         }
         h2 {
-            font-size: 20px !important;
+            font-size: 18px !important;
+        }
+        .stColumns {
+            flex-direction: column !important;
         }
         .stColumns > div {
             width: 100% !important;
@@ -659,64 +692,93 @@ st.markdown("""
             width: 60px;
         }
         .title-container h1 {
-            font-size: 18px;
+            font-size: 16px;
         }
         .metrics-container h3 {
-            font-size: 18px;
+            font-size: 16px;
         }
         .metric-box {
             font-size: 12px;
             padding: 6px;
         }
         .stPlotlyChart {
-            height: 40vh !important;
+            height: 35vh !important;
             width: 100% !important;
             max-width: 100vw !important;
         }
         .st-expander {
-            min-height: 40vh !important;
+            min-height: auto !important;
         }
     }
     </style>
 """, unsafe_allow_html=True)
 
-# Prevent screen jump by maintaining scroll position
+# JavaScript for swipe-to-toggle sidebar and scroll retention
 st.markdown("""
     <script>
-        document.addEventListener("DOMContentLoaded", function() {
-            const main = document.querySelector('.main');
-            const expander = document.querySelector('.st-expander');
-            let lastScrollPosition = sessionStorage.getItem('scrollPosition') || 0;
-            let debounceTimeout = null;
+    document.addEventListener("DOMContentLoaded", function() {
+        const main = document.querySelector('.main');
+        const sidebar = document.querySelector('[data-testid="stSidebar"]');
+        const sidebarToggle = document.querySelector('[data-testid="stSidebarNav"] button');
+        let lastScrollPosition = sessionStorage.getItem('scrollPosition') || 0;
+        let debounceTimeout = null;
+        let touchStartX = 0;
+        let touchEndX = 0;
 
-            // Restore scroll position on load
-            main.scrollTop = lastScrollPosition;
+        // Restore scroll position on load
+        main.scrollTop = lastScrollPosition;
 
-            // Update scroll position on scroll
-            main.addEventListener('scroll', () => {
-                lastScrollPosition = main.scrollTop;
-                sessionStorage.setItem('scrollPosition', lastScrollPosition);
-            });
-
-            // Restore scroll position on DOM updates with debounce
-            const restoreScroll = () => {
-                if (debounceTimeout) clearTimeout(debounceTimeout);
-                debounceTimeout = setTimeout(() => {
-                    requestAnimationFrame(() => {
-                        main.scrollTop = lastScrollPosition;
-                        if (expander) {
-                            expander.scrollIntoView({ behavior: 'auto', block: 'start' });
-                        }
-                    });
-                }, 100);
-            };
-
-            const observer = new MutationObserver(() => {
-                restoreScroll();
-            });
-
-            observer.observe(main, { childList: true, subtree: true, attributes: true });
+        // Update scroll position on scroll
+        main.addEventListener('scroll', () => {
+            lastScrollPosition = main.scrollTop;
+            sessionStorage.setItem('scrollPosition', lastScrollPosition);
         });
+
+        // Restore scroll position on DOM updates with debounce
+        const restoreScroll = () => {
+            if (debounceTimeout) clearTimeout(debounceTimeout);
+            debounceTimeout = setTimeout(() => {
+                requestAnimationFrame(() => {
+                    main.scrollTop = lastScrollPosition;
+                });
+            }, 100);
+        };
+
+        const observer = new MutationObserver(() => {
+            restoreScroll();
+        });
+
+        observer.observe(main, { childList: true, subtree: true, attributes: true });
+
+        // Swipe detection for sidebar
+        if (sidebar) {
+            sidebar.addEventListener('touchstart', (e) => {
+                touchStartX = e.changedTouches[0].screenX;
+            }, { passive: true });
+
+            sidebar.addEventListener('touchend', (e) => {
+                touchEndX = e.changedTouches[0].screenX;
+                handleSwipe();
+            }, { passive: true });
+
+            function handleSwipe() {
+                const swipeDistance = touchEndX - touchStartX;
+                const isSidebarOpen = sidebar.getAttribute('aria-expanded') === 'true';
+                if (swipeDistance > 50 && !isSidebarOpen) {
+                    // Swipe right to open
+                    sidebarToggle.click();
+                } else if (swipeDistance < -50 && isSidebarOpen) {
+                    // Swipe left to close
+                    sidebarToggle.click();
+                }
+            }
+        }
+
+        // Ensure graphs resize on window resize
+        window.addEventListener('resize', () => {
+            window.dispatchEvent(new Event('resize'));
+        });
+    });
     </script>
 """, unsafe_allow_html=True)
 
