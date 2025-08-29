@@ -4,7 +4,7 @@ import plotly.graph_objs as go
 import numpy as np
 import time
 
-# Helper functions (unchanged)
+# Helper functions
 def seconds_to_min_sec(seconds):
     minutes = int(seconds // 60)
     remaining_seconds = seconds % 60
@@ -32,7 +32,7 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-# CSV files (unchanged)
+# CSV files
 csv_files = {
     "10-degree Slope": {
         "PowerPedal": "https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/10-degree_Slope_PP.CSV",
@@ -49,10 +49,14 @@ csv_files = {
     "Starts and stops": {
         "PowerPedal": "https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/Starts_and_stops_PP.CSV",
         "Stock": "https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/Starts_and_stops_s.CSV"
+    },
+    "Urban City Ride": {
+        "PowerPedal": "https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/urban_city_ride_PP.CSV",
+        "Stock": "https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/urban_city_ride_s.CSV"
     }
 }
 
-# Data loading and processing functions (unchanged)
+# Data loading and processing functions
 @st.cache_data(hash_funcs={pd.DataFrame: lambda _: None}, ttl=300)
 def load_data(csv_url, _cache_buster):
     try:
@@ -285,30 +289,24 @@ else:
 
 # Graph and metrics
 with st.expander("Power vs. Time Comparison", expanded=True):
-    # Calculate metrics (unchanged)
+    # Calculate metrics
     if not df_filtered_pp.empty:
-        time_hours_pp = df_filtered_pp["Time"] / 3600000
-        energy_battery_pp = np.trapz(df_filtered_pp["Battery Power"], time_hours_pp)
         distance_pp = df_filtered_pp["Ride Distance"].max() if "Ride Distance" in df_filtered_pp.columns else 0
         distance_pp_display = format_distance(distance_pp)
         duration_pp = (df_filtered_pp["Time"].max() - df_filtered_pp["Time"].min()) / 1000
         duration_pp_display = seconds_to_min_sec(duration_pp)
     else:
-        energy_battery_pp = 0
         distance_pp = 0
         distance_pp_display = "0 m"
         duration_pp = 0
         duration_pp_display = "0 min 0 s"
 
     if not df_filtered_s.empty:
-        time_hours_s = df_filtered_s["Time"] / 3600000
-        energy_battery_s = np.trapz(df_filtered_s["Battery Power"], time_hours_s)
         distance_s = df_filtered_s["Ride Distance"].max() if "Ride Distance" in df_filtered_s.columns else 0
         distance_s_display = format_distance(distance_s)
         duration_s = (df_filtered_s["Time"].max() - df_filtered_s["Time"].min()) / 1000
         duration_s_display = seconds_to_min_sec(duration_s)
     else:
-        energy_battery_s = 0
         distance_s = 0
         distance_s_display = "0 m"
         duration_s = 0
@@ -320,17 +318,11 @@ with st.expander("Power vs. Time Comparison", expanded=True):
             <div class="metrics-container">
                 <h3>Key Metrics for {}</h3>
                 <div class="metrics-grid">
-                    <div class="metric-box battery">
-                        Total Battery Energy (PowerPedal)<br>{:.2f} Wh
-                    </div>
                     <div class="metric-box rider">
                         Ride Duration (PowerPedal)<br>{}
                     </div>
                     <div class="metric-box distance">
                         Ride Distance (PowerPedal)<br>{}
-                    </div>
-                    <div class="metric-box battery-stock">
-                        Total Battery Energy (Stock)<br>{:.2f} Wh
                     </div>
                     <div class="metric-box rider-stock">
                         Ride Duration (Stock)<br>{}
@@ -342,10 +334,8 @@ with st.expander("Power vs. Time Comparison", expanded=True):
             </div>
         """.format(
             selected_ride,
-            energy_battery_pp,
             duration_pp_display,
             distance_pp_display,
-            energy_battery_s,
             duration_s_display,
             distance_s_display
         ), unsafe_allow_html=True)
@@ -543,7 +533,7 @@ with st.expander("Power vs. Time Comparison", expanded=True):
             key="power_graph_s"
         )
 
-# CSS (unchanged)
+# CSS
 st.markdown("""
     <style>
     .main .block-container {
@@ -624,10 +614,6 @@ st.markdown("""
         width: 100%;
         box-sizing: border-box;
     }
-    .metric-box.battery {
-        background-color: #4db6d1;
-        border: 2px solid #4db6d1;
-    }
     .metric-box.rider {
         background-color: #6fc7e1;
         border: 2px solid #6fc7e1;
@@ -635,10 +621,6 @@ st.markdown("""
     .metric-box.distance {
         background-color: #2e8ba3;
         border: 2px solid #2e8ba3;
-    }
-    .metric-box.battery-stock {
-        background-color: #ff8c00;
-        border: 2px solid #ff8c00;
     }
     .metric-box.rider-stock {
         background-color: #ffa733;
@@ -748,7 +730,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# JavaScript (unchanged)
+# JavaScript
 st.markdown("""
     <script>
     document.addEventListener("DOMContentLoaded", function() {
