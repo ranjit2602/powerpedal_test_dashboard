@@ -1,0 +1,30 @@
+name: Keep Streamlit App Awake
+
+on:
+  # This section sets the schedule.
+  # '0 */10 * * *' means: "At minute 0, of every 10th hour, every day."
+  schedule:
+    - cron: '0 */10 * * *'
+  # This allows you to run it immediately from GitHub to test it.
+  workflow_dispatch:
+
+jobs:
+  auto_commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        # Download your code so the job can work on it
+        uses: actions/checkout@v4
+
+      - name: Create and push empty commit
+        # These commands are the "ghost" making the small update.
+        run: |
+          # Set up the identity for the commit
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Actions Bot"
+          
+          # Create the commit with NO file changes
+          git commit --allow-empty -m "🤖 Auto-commit to keep app awake"
+          
+          # Send the commit back to GitHub
+          git push
