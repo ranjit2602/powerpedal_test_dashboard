@@ -109,17 +109,14 @@ st.markdown("""
     
     /* Make selectbox huge and obvious */
     div[data-baseweb="select"] { cursor: pointer; border: 2px solid rgba(2, 132, 199, 0.5); border-radius: 8px;}
-    .stSelectbox label { display: none; } /* Hide default label, using custom one */
+    .stSelectbox label { display: none; }
     </style>
 """, unsafe_allow_html=True)
 
 # --- HIGH-PERFORMANCE DATA LOADING ---
-# Removed ttl=300. The data will now cache instantly in RAM and never re-download unless the app restarts.
 @st.cache_data(show_spinner=False)
 def load_exact_telemetry(csv_url):
-    """Loads the exact data from the CSV. Extremely fast selective column parsing."""
     try:
-        # Load ONLY the necessary columns to save massive amounts of RAM and parsing time
         def col_filter(x):
             return x in ["Time", "Battery Power", "Rider Power", "Ride Distance"]
             
@@ -131,11 +128,9 @@ def load_exact_telemetry(csv_url):
             else: 
                 df[col] = pd.to_numeric(df[col], errors="coerce")
                 
-        # Drop only if essential telemetry is missing
         df = df.dropna(subset=["Time", "Battery Power", "Rider Power"])
         
         df["Time_Sec"] = (df["Time"] - df["Time"].min()) / 1000.0
-        # Preserve exact raw peaks
         df["Motor Output"] = df["Battery Power"]
         df["Human Input"] = df["Rider Power"]
             
@@ -170,10 +165,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 selected_ride = st.selectbox("Select Telemetry Dataset:", list(csv_files.keys()))
-
 st.markdown("</div>", unsafe_allow_html=True)
 
-# Fast loading spinner
 with st.spinner("Extracting and mapping telemetry data..."):
     df_pp = load_exact_telemetry(csv_files[selected_ride]["PowerPedal"])
     df_s = load_exact_telemetry(csv_files[selected_ride]["Stock"])
@@ -216,7 +209,6 @@ else:
         </div>
     """, unsafe_allow_html=True)
 
-
 # ==========================================
 # CHRONOLOGY STEP 2: RAW TELEMETRY GRAPHS
 # ==========================================
@@ -224,21 +216,17 @@ st.markdown('<div class="section-title">2. Raw Telemetry Data</div>', unsafe_all
 
 if not df_pp.empty and not df_s.empty:
     
-    # Calculate global max strictly based on actual RAW data points
     max_power_y = max(
         df_pp[["Motor Output", "Human Input"]].max().max(),
         df_s[["Motor Output", "Human Input"]].max().max()
-    ) * 1.1 # 10% headroom
+    ) * 1.1 
     
     max_time_x = max(df_pp["Time_Sec"].max(), df_s["Time_Sec"].max())
-    
-    # Initial Viewport Logic
     initial_x_range = [0, min(60, max_time_x)]
 
     def create_engineering_graph(df, motor_color, human_color):
         fig = go.Figure()
         
-        # Human Input
         fig.add_trace(go.Scatter(
             x=df["Time_Sec"], y=df["Human Input"],
             name="Human Input (W)", mode='lines',
@@ -247,7 +235,6 @@ if not df_pp.empty and not df_s.empty:
             hovertemplate="Time: %{x:.2f}s<br>Human: %{y:.1f} W<extra></extra>"
         ))
         
-        # Motor Output
         fig.add_trace(go.Scatter(
             x=df["Time_Sec"], y=df["Motor Output"],
             name="Motor Output (W)", mode='lines',
@@ -290,7 +277,6 @@ if not df_pp.empty and not df_s.empty:
 
 else:
     st.error("Telemetry data unavailable for this selection.")
-
 
 # ==========================================
 # CHRONOLOGY STEP 3: EMPIRICAL RESULTS (URBAN ONLY)
@@ -336,9 +322,8 @@ if "Urban City Ride" in selected_ride and not df_pp.empty and not df_s.empty:
         </div>
     """, unsafe_allow_html=True)
 
-
 # ==========================================
-# CHRONOLOGY STEP 4: EXPERT ANALYSIS (UNIQUE TO EACH RIDE)
+# CHRONOLOGY STEP 4: EXPERT ANALYSIS
 # ==========================================
 step_num = "4" if "Urban City Ride" in selected_ride else "3"
 st.markdown(f'<div class="section-title">{step_num}. Executive Technical Summary</div>', unsafe_allow_html=True)
