@@ -1,13 +1,14 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objs as go
+import numpy as np
 import time
 
 # --- HELPER FUNCTIONS ---
 def seconds_to_min_sec(seconds):
     minutes = int(seconds // 60)
     remaining_seconds = seconds % 60
-    return f"{minutes} min {remaining_seconds:.0f} s"
+    return f"{minutes} min {remaining_seconds:.1f} s"
 
 def format_distance(meters):
     if meters < 1000:
@@ -16,10 +17,27 @@ def format_distance(meters):
         return f"{meters / 1000:.2f} km"
 
 def calculate_energy_wh(df):
+    """
+    Calculates Energy in Watt-hours (Wh) using Proper Mathematical Integration (Trapezoidal Rule).
+    This computes the exact area under the Power-Time curve for maximum accuracy.
+    """
     if df.empty or "Battery Power" not in df.columns or "Time" not in df.columns:
         return 0.0
-    time_diff_hrs = df["Time"].diff().fillna(0) / 3600000.0
-    return (df["Battery Power"] * time_diff_hrs).sum()
+    
+    time_sec = df["Time"] / 1000.0
+    power_w = df["Battery Power"]
+    
+    # Calculate dt (time difference between readings)
+    dt = time_sec.diff().fillna(0)
+    # Calculate average power between the two discrete readings
+    avg_power = (power_w + power_w.shift(1).fillna(0)) / 2.0
+    
+    # Sum of (Average Power * dt) gives total Joules (Watt-seconds)
+    energy_joules = (avg_power * dt).sum()
+    
+    # Convert Joules to Watt-hours (1 Wh = 3600 J)
+    energy_wh = energy_joules / 3600.0
+    return energy_wh
 
 @st.cache_data(ttl=300)
 def load_data(csv_url):
@@ -44,64 +62,68 @@ def advanced_downsample(df, max_points):
 # --- CONFIG & SETUP ---
 st.set_page_config(page_title="PowerPedal Dashboard", layout="wide", initial_sidebar_state="expanded")
 
-# --- PREMIUM CSS STYLING ---
+# --- PROFESSIONAL CSS STYLING ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
     
     html, body, [class*="css"] { font-family: 'Inter', sans-serif !important; }
     
+    .main .block-container { padding: 2rem !important; max-width: 95% !important; }
+    
     /* Header */
     .premium-header {
         display: flex; align-items: center; gap: 20px;
-        padding: 10px 0 30px 0; border-bottom: 1px solid rgba(150,150,150,0.2); margin-bottom: 30px;
+        padding-bottom: 20px; border-bottom: 1px solid rgba(150,150,150,0.2); margin-bottom: 30px;
     }
-    .premium-header img { height: 40px; width: auto; }
-    .premium-header h1 { font-size: 26px; font-weight: 800; margin: 0; background: linear-gradient(90deg, #111827, #374151); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .premium-header img { height: 45px; width: auto; }
+    .premium-header h1 { font-size: 24px; font-weight: 700; margin: 0; color: var(--text-color); }
     
-    /* Dynamic Insight Banners */
-    .insight-card {
-        border-radius: 16px; padding: 35px; color: white; margin-bottom: 35px;
-        box-shadow: 0 20px 40px -10px rgba(0,0,0,0.15);
-        display: flex; flex-direction: column; gap: 15px;
-        position: relative; overflow: hidden;
+    /* Hero Cards (Top Section) */
+    .hero-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 40px; }
+    .hero-card {
+        border-radius: 12px; padding: 30px 20px; text-align: center;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+        display: flex; flex-direction: column; justify-content: center; min-height: 180px;
     }
-    .insight-urban {
-        background: radial-gradient(circle at top right, #0284c7 0%, #0f172a 100%);
-    }
-    .insight-experience {
-        background: radial-gradient(circle at top right, #ea580c 0%, #1e1b4b 100%);
-    }
-    .insight-tag {
-        font-size: 11px; text-transform: uppercase; letter-spacing: 2px;
-        font-weight: 700; color: rgba(255,255,255,0.7);
-    }
-    .insight-headline {
-        font-size: 38px; font-weight: 800; margin: 0; line-height: 1.1;
-    }
-    .insight-body {
-        font-size: 16px; line-height: 1.6; color: rgba(255,255,255,0.85); max-width: 800px;
-    }
-    .highlight-text { color: #38bdf8; font-weight: 700; }
-    .highlight-text-exp { color: #fb923c; font-weight: 700; }
+    .hero-card.green { background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); color: white; }
+    .hero-card.grey { background: linear-gradient(135deg, #64748b 0%, #475569 100%); color: white; }
+    .hero-card.blue { background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%); color: white; }
     
-    /* Stats Grid inside Banner */
-    .stat-row { display: flex; gap: 40px; margin-top: 15px; }
-    .stat-item { display: flex; flex-direction: column; }
-    .stat-value { font-size: 32px; font-weight: 800; }
-    .stat-label { font-size: 12px; color: rgba(255,255,255,0.6); text-transform: uppercase; letter-spacing: 1px; }
+    .hero-title { font-size: 14px; font-weight: 600; margin-bottom: 10px; opacity: 0.9; }
+    .hero-value { font-size: 32px; font-weight: 800; margin-bottom: 10px; }
+    .hero-sub { font-size: 15px; font-weight: 600; }
     
-    /* Fix Streamlit Metrics */
-    div[data-testid="stMetricValue"] { font-weight: 700 !important; color: #1e293b !important; }
-    div[data-testid="stMetricLabel"] { font-weight: 600 !important; color: #64748b !important; }
+    /* Detail Breakdown Section */
+    .detail-header { font-size: 22px; font-weight: 700; margin-bottom: 20px; color: var(--text-color); }
+    .system-title { font-size: 20px; font-weight: 700; margin-bottom: 15px; }
+    .system-title.pp { color: #22c55e; }
+    .system-title.stock { color: #ef4444; }
+    
+    .metrics-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 30px; }
+    .metric-box {
+        background-color: var(--secondary-background-color); 
+        border: 1px solid rgba(150,150,150,0.1);
+        border-radius: 8px; padding: 15px; text-align: left;
+    }
+    .metric-box.tint-red { background-color: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); }
+    .metric-box.tint-orange { background-color: rgba(249, 115, 22, 0.1); border: 1px solid rgba(249, 115, 22, 0.2); }
+    
+    .box-label { font-size: 12px; color: var(--text-color); opacity: 0.7; margin-bottom: 5px; }
+    .box-value { font-size: 18px; font-weight: 700; color: var(--text-color); }
+    
+    @media (max-width: 768px) {
+        .hero-grid { grid-template-columns: 1fr; }
+        .metrics-row { grid-template-columns: 1fr; }
+    }
     </style>
 """, unsafe_allow_html=True)
 
-# Header
+# --- HEADER ---
 st.markdown("""
     <div class="premium-header">
         <img src="https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/logo.png">
-        <h1>System Performance Telemetry</h1>
+        <h1>Performance Metrics: PowerPedal vs. Stock Baseline (36V, 7.65 Ah)</h1>
     </div>
 """, unsafe_allow_html=True)
 
@@ -113,23 +135,22 @@ csv_files = {
     "Starts and stops": {"PowerPedal": "https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/Starts_and_stops_PP.CSV", "Stock": "https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/Starts_and_stops_s.CSV"}
 }
 
-# --- SIDEBAR ---
-st.sidebar.header("Mission Control")
-selected_ride = st.sidebar.selectbox("Select Test Scenario", list(csv_files.keys()))
-view_mode = st.sidebar.radio("Data Visualization", ["Side-by-Side", "Overlay (Direct Comparison)"])
+# --- SIDEBAR CONTROLS ---
+st.sidebar.header("Controls")
+selected_ride = st.sidebar.selectbox("Select Scenario", list(csv_files.keys()))
+view_mode = st.sidebar.radio("View Mode", ["Side-by-Side", "Overlay"])
 
-st.sidebar.subheader("Telemetry Feeds")
-show_rider = st.sidebar.checkbox("Rider Input Power", value=True)
-show_battery = st.sidebar.checkbox("Motor/Battery Output", value=True)
+show_rider = st.sidebar.checkbox("Show Rider Power", value=True)
+show_battery = st.sidebar.checkbox("Show Battery Power", value=True)
 
-with st.sidebar.expander("Signal Processing"):
-    show_full = st.checkbox("Lock to Full Timeline", value=False)
-    zoom_level = st.slider("Zoom Scale", 0.1, 1.0, 1.0, 0.1)
-    downsample = st.slider("Resolution (Downsample)", 1, 50, 20)
-    smooth_window = st.slider("Signal Smoothing", 1, 10, 2)
+with st.sidebar.expander("Advanced Settings"):
+    show_full = st.checkbox("Show Full Timeline", value=False)
+    zoom_level = st.slider("Zoom", 0.1, 1.0, 1.0, 0.1)
+    downsample = st.slider("Downsample Factor", 1, 50, 20)
+    smooth_window = st.slider("Smoothing Window", 1, 10, 2)
 
-# --- LOAD & PROCESS DATA ---
-with st.spinner("Decrypting telemetry..."):
+# --- LOAD DATA ---
+with st.spinner("Loading telemetry..."):
     df_pp = load_data(csv_files[selected_ride]["PowerPedal"])
     df_s = load_data(csv_files[selected_ride]["Stock"])
 
@@ -152,74 +173,97 @@ else: selected_time = (min_t, max_t)
 df_raw_pp, df_graph_pp = process_df(df_pp, selected_time)
 df_raw_s, df_graph_s = process_df(df_s, selected_time)
 
-# --- THE MAGIC: DYNAMIC NARRATIVE ENGINE ---
-if not df_raw_pp.empty and not df_raw_s.empty:
-    
-    if selected_ride == "Urban City Ride":
-        # Calculate Range/Efficiency
-        dist_km_pp = df_raw_pp["Ride Distance"].max() / 1000
-        dist_km_s = df_raw_s["Ride Distance"].max() / 1000
-        energy_pp = calculate_energy_wh(df_raw_pp)
-        energy_s = calculate_energy_wh(df_raw_s)
-        
-        wh_km_pp = energy_pp / dist_km_pp if dist_km_pp > 0 else 0
-        wh_km_s = energy_s / dist_km_s if dist_km_s > 0 else 0
-        
-        range_500_pp = 500 / wh_km_pp if wh_km_pp > 0 else 0
-        range_500_s = 500 / wh_km_s if wh_km_s > 0 else 0
-        multiplier = range_500_pp / range_500_s if range_500_s > 0 else 0
+# --- MATH ENGINE (BATTERY = 36V * 7.65Ah = 275.4 Wh) ---
+BATTERY_WH = 275.4
 
-        st.markdown(f"""
-            <div class="insight-card insight-urban">
-                <div class="insight-tag">Efficiency Analysis</div>
-                <h2 class="insight-headline">Almost Double the Range.</h2>
-                <p class="insight-body">
-                    In stop-and-go urban environments, the Stock system bleeds energy. PowerPedal's intelligent 
-                    power management drastically reduces wasted output. The telemetry below proves it: PowerPedal operates at an ultra-efficient 
-                    <span class="highlight-text">{wh_km_pp:.1f} Wh/km</span>. On a standard 500Wh battery, this translates to 
-                    a projected <span class="highlight-text">{range_500_pp:.0f}km range</span>—nearly <b>{multiplier:.1f}x further</b> than the Stock system on the exact same charge.
-                </p>
-                <div class="stat-row">
-                    <div class="stat-item">
-                        <span class="stat-value" style="color: #38bdf8;">{range_500_pp:.0f} km</span>
-                        <span class="stat-label">PowerPedal Projected Range (500Wh)</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-value" style="color: rgba(255,255,255,0.4);">{range_500_s:.0f} km</span>
-                        <span class="stat-label">Stock Projected Range (500Wh)</span>
-                    </div>
-                </div>
+# PowerPedal Core Stats
+dist_m_pp = df_raw_pp["Ride Distance"].max() if not df_raw_pp.empty else 0
+dur_sec_pp = (df_raw_pp["Time"].max() - df_raw_pp["Time"].min()) / 1000 if not df_raw_pp.empty else 0
+energy_pp = calculate_energy_wh(df_raw_pp)
+eff_m_wh_pp = dist_m_pp / energy_pp if energy_pp > 0 else 0
+max_range_km_pp = (eff_m_wh_pp * BATTERY_WH) / 1000
+
+# Stock Core Stats
+dist_m_s = df_raw_s["Ride Distance"].max() if not df_raw_s.empty else 0
+dur_sec_s = (df_raw_s["Time"].max() - df_raw_s["Time"].min()) / 1000 if not df_raw_s.empty else 0
+energy_s = calculate_energy_wh(df_raw_s)
+eff_m_wh_s = dist_m_s / energy_s if energy_s > 0 else 0
+max_range_km_s = (eff_m_wh_s * BATTERY_WH) / 1000
+
+# Comparisons
+diff_km = max_range_km_pp - max_range_km_s
+eff_improvement_pct = ((eff_m_wh_pp / eff_m_wh_s) - 1) * 100 if eff_m_wh_s > 0 else 0
+
+# --- UI VISUALIZATION: HERO CARDS ---
+st.markdown(f"""
+    <div class="hero-grid">
+        <div class="hero-card green">
+            <div class="hero-title">PowerPedal™ Max Range</div>
+            <div class="hero-value">{max_range_km_pp:.1f} km</div>
+            <div class="hero-sub">(+{diff_km:.1f} km Difference)</div>
+        </div>
+        <div class="hero-card grey">
+            <div class="hero-title">Stock System Max Range</div>
+            <div class="hero-value">{max_range_km_s:.1f} km</div>
+            <div class="hero-sub">Baseline Comparison</div>
+        </div>
+        <div class="hero-card blue">
+            <div class="hero-title">Energy Efficiency Improvement</div>
+            <div class="hero-value">+{eff_improvement_pct:.1f}%</div>
+            <div class="hero-sub">Power-to-Distance Ratio</div>
+        </div>
+    </div>
+""", unsafe_allow_html=True)
+
+# --- UI VISUALIZATION: DETAILED METRICS ---
+st.markdown('<div class="detail-header">Detailed Metrics Breakdown (Test Data Comparison)</div>', unsafe_allow_html=True)
+
+col1, col2 = st.columns(2, gap="large")
+
+with col1:
+    st.markdown('<div class="system-title pp">PowerPedal™ System</div>', unsafe_allow_html=True)
+    st.markdown(f"""
+        <div class="metrics-row">
+            <div class="metric-box">
+                <div class="box-label">Total Distance</div>
+                <div class="box-value">{format_distance(dist_m_pp)}</div>
             </div>
-        """, unsafe_allow_html=True)
-
-    else:
-        # Ride Experience / Smoothness
-        st.markdown(f"""
-            <div class="insight-card insight-experience">
-                <div class="insight-tag">Ride Dynamics Analysis</div>
-                <h2 class="insight-headline">A Seamless, Bionic Ride Feel.</h2>
-                <p class="insight-body">
-                    Look closely at the telemetry graphs below. The defining characteristic of the PowerPedal system is 
-                    <b>Proportional Assist</b>. Notice how the motor's power output perfectly tracks and mirrors the rider's physical input. 
-                    <br><br>
-                    Unlike the Stock system—which suffers from harsh, binary power spikes that cause the bike to jerk and lurch—PowerPedal 
-                    delivers <span class="highlight-text-exp">smooth, continuous torque</span>. The motor anticipates the rider's effort, 
-                    creating a natural extension of the human body rather than a fight against a machine.
-                </p>
+            <div class="metric-box">
+                <div class="box-label">Ride Duration</div>
+                <div class="box-value">{seconds_to_min_sec(dur_sec_pp)}</div>
             </div>
-        """, unsafe_allow_html=True)
+            <div class="metric-box">
+                <div class="box-label">Base Efficiency</div>
+                <div class="box-value">{eff_m_wh_pp:.2f} m/Wh</div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
 
-# --- RAW METRICS ---
-st.markdown("### Test Run Data")
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("PowerPedal Distance", format_distance(df_raw_pp["Ride Distance"].max() if not df_raw_pp.empty else 0))
-c2.metric("Stock Distance", format_distance(df_raw_s["Ride Distance"].max() if not df_raw_s.empty else 0))
-c3.metric("PowerPedal Time", seconds_to_min_sec((df_raw_pp["Time"].max() - df_raw_pp["Time"].min())/1000 if not df_raw_pp.empty else 0))
-c4.metric("Stock Time", seconds_to_min_sec((df_raw_s["Time"].max() - df_raw_s["Time"].min())/1000 if not df_raw_s.empty else 0))
+with col2:
+    st.markdown('<div class="system-title stock">Stock System</div>', unsafe_allow_html=True)
+    st.markdown(f"""
+        <div class="metrics-row">
+            <div class="metric-box tint-red">
+                <div class="box-label">Total Distance</div>
+                <div class="box-value">{format_distance(dist_m_s)}</div>
+            </div>
+            <div class="metric-box tint-red">
+                <div class="box-label">Ride Duration</div>
+                <div class="box-value">{seconds_to_min_sec(dur_sec_s)}</div>
+            </div>
+            <div class="metric-box tint-orange">
+                <div class="box-label">Base Efficiency</div>
+                <div class="box-value">{eff_m_wh_s:.2f} m/Wh</div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
 
-st.write("")
+st.divider()
 
-# --- VISUALIZATIONS ---
+# --- UI VISUALIZATION: GRAPHS ---
+st.markdown('<div class="detail-header">Live Telemetry Analysis</div>', unsafe_allow_html=True)
+
+# Graph Math
 max_p = max(df_graph_pp[["Battery Power", "Rider Power"]].max().max() if not df_graph_pp.empty else 0,
             df_graph_s[["Battery Power", "Rider Power"]].max().max() if not df_graph_s.empty else 0)
 y_range = [0, max(100, max_p * 1.15)]
@@ -229,15 +273,14 @@ center = sum(selected_time) / 2
 x_range_sec = [(center - span/2)/1000.0, (center + span/2)/1000.0]
 
 def add_traces(fig, df, suffix, is_dashed=False):
-    # Premium Graph Colors
-    c_batt = "#0ea5e9" if not is_dashed else "#94a3b8" # Vivid blue for PP, muted slate for Stock
-    c_rider = "#f97316" if not is_dashed else "#fdba74" # Vivid orange for PP, muted orange for Stock
+    c_batt = "#0ea5e9" if not is_dashed else "#94a3b8" 
+    c_rider = "#f97316" if not is_dashed else "#fdba74" 
     
     dash_style = "dash" if is_dashed else "solid"
-    line_width = 3 if not is_dashed else 2 # Thicker lines for PP
+    line_width = 3 if not is_dashed else 2
     
     if show_battery and not df.empty:
-        fig.add_trace(go.Scatter(x=df["Time_Sec"], y=df["Battery Power"], name=f"Battery Power {suffix}", line=dict(color=c_batt, width=line_width, dash=dash_style)))
+        fig.add_trace(go.Scatter(x=df["Time_Sec"], y=df["Battery Power"], name=f"Battery Power {suffix}", fill='tozeroy', line=dict(color=c_batt, width=line_width, dash=dash_style)))
     if show_rider and not df.empty:
         fig.add_trace(go.Scatter(x=df["Time_Sec"], y=df["Rider Power"], name=f"Rider Power {suffix}", line=dict(color=c_rider, width=line_width, dash=dash_style)))
     if selected_ride == "Zero to 25" and not df.empty:
@@ -245,34 +288,33 @@ def add_traces(fig, df, suffix, is_dashed=False):
 
 layout_args = dict(
     xaxis_title="Time (Seconds)", yaxis_title="Power (Watts)",
-    xaxis=dict(range=x_range_sec, showgrid=True, gridcolor='rgba(200,200,200,0.2)'),
-    yaxis=dict(range=y_range, showgrid=True, gridcolor='rgba(200,200,200,0.2)'),
-    hovermode="x unified", margin=dict(l=20, r=20, t=50, b=20),
-    legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="center", x=0.5, font=dict(size=14))
+    xaxis=dict(range=x_range_sec),
+    yaxis=dict(range=y_range),
+    hovermode="x unified",
+    margin=dict(l=20, r=20, t=20, b=20),
+    legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="center", x=0.5)
 )
 
 if selected_ride == "Zero to 25":
     layout_args["yaxis2"] = dict(title="Speed (KMPH)", overlaying="y", side="right", fixedrange=True, showgrid=False)
 
-if view_mode == "Overlay (Direct Comparison)":
+if view_mode == "Overlay":
     fig = go.Figure()
-    add_traces(fig, df_graph_pp, "(PowerPedal)")
+    add_traces(fig, df_graph_pp, "(PP)")
     add_traces(fig, df_graph_s, "(Stock)", is_dashed=True)
     fig.update_layout(**layout_args)
-    # Hinting to the user what to look at in overlay
-    st.info("💡 **How to Read This:** Solid lines represent PowerPedal. Dashed lines represent the Stock system. Watch how the solid orange (Rider) and solid blue (Motor) lines move together in harmony.")
     st.plotly_chart(fig, use_container_width=True, theme="streamlit")
 
 else:
     col_g1, col_g2 = st.columns(2)
     with col_g1:
-        st.markdown("#### PowerPedal: Smooth & Proportional")
+        st.markdown("**PowerPedal Response**")
         fig_pp = go.Figure()
         add_traces(fig_pp, df_graph_pp, "")
         fig_pp.update_layout(**layout_args)
         st.plotly_chart(fig_pp, use_container_width=True, theme="streamlit")
     with col_g2:
-        st.markdown("#### Stock System: Binary & Jerky")
+        st.markdown("**Stock System Response**")
         fig_s = go.Figure()
         add_traces(fig_s, df_graph_s, "", is_dashed=True)
         fig_s.update_layout(**layout_args)
