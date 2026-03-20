@@ -4,7 +4,7 @@ import plotly.graph_objs as go
 from streamlit_autorefresh import st_autorefresh
 
 # Ping the server every 5 minutes (300,000 milliseconds) to keep the connection alive
-st_autorefresh(interval=300000, limit=None, key="keep_alive")
+st_autorefresh(interval=1.44e+7, limit=None, key="keep_alive")
 
 # --- CONFIG & SETUP ---
 st.set_page_config(
@@ -157,15 +157,6 @@ st.markdown("""
         <h1>PowerPedal™ Advanced Telemetry Dashboard</h1>
         <p>Comparative System Analytics</p>
     </div>
-""", unsafe_allow_html=True)
-
-# --- HIGH VISIBILITY SELECTOR ---
-st.markdown("""
-    <div class="selector-container">
-        <div class="selector-label">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 15h18v4a2 2 0 0 1-4 0v-4"/><path d="M3 8v11c0 1.1.9 2 2 2h14"/></svg>
-            Select Test Protocol For Analysis
-        </div>
 """, unsafe_allow_html=True)
 
 selected_ride = st.selectbox("Select Telemetry Dataset:", list(csv_files.keys()))
