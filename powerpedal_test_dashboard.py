@@ -1,6 +1,10 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objs as go
+from streamlit_autorefresh import st_autorefresh
+
+# Ping the server every 5 minutes (300,000 milliseconds) to keep the connection alive
+st_autorefresh(interval=300000, limit=None, key="keep_alive")
 
 # --- CONFIG & SETUP ---
 st.set_page_config(
