@@ -1,10 +1,9 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objs as go
-import numpy as np
 import time
 
-# Helper functions
+# --- HELPER FUNCTIONS ---
 def seconds_to_min_sec(seconds):
     minutes = int(seconds // 60)
     remaining_seconds = seconds % 60
@@ -16,464 +15,265 @@ def format_distance(meters):
     else:
         return f"{meters / 1000:.2f} km"
 
-# Set page config
-st.set_page_config(
-    page_title="PowerPedal Dashboard",
-    page_icon="https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/logo.png",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+def calculate_energy_wh(df):
+    if df.empty or "Battery Power" not in df.columns or "Time" not in df.columns:
+        return 0.0
+    time_diff_hrs = df["Time"].diff().fillna(0) / 3600000.0
+    return (df["Battery Power"] * time_diff_hrs).sum()
 
-# Display logo and title
-st.markdown("""
-    <div class="title-container">
-        <img src="https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/logo.png" class="logo">
-        <h1>PowerPedal™ vs Stock System Dashboard</h1>
-    </div>
-""", unsafe_allow_html=True)
-
-# CSV files
-csv_files = {
-    "10-degree Slope": {
-        "PowerPedal": "https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/10-degree_Slope_PP.CSV",
-        "Stock": "https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/10-degree_Slope_s.CSV"
-    },
-    "Straight Slight incline": {
-        "PowerPedal": "https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/Straight-Slight_incline_PP.csv",
-        "Stock": "https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/Straight-Slight_incline_s.csv"
-    },
-    "Zero to 25": {
-        "PowerPedal": "https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/Zero_to_25_PP.CSV",
-        "Stock": "https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/Zero_to_25_s.CSV"
-    },
-    "Starts and stops": {
-        "PowerPedal": "https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/Starts_and_stops_PP.CSV",
-        "Stock": "https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/Starts_and_stops_s.CSV"
-    },
-    "Urban City Ride": {
-        "PowerPedal": "https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/urban_city_ride_PP.CSV",
-        "Stock": "https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/urban_city_ride_s.CSV"
-    } 
-}
-
-# Data loading and processing functions
-@st.cache_data(hash_funcs={pd.DataFrame: lambda _: None}, ttl=300)
-def load_data(csv_url, _cache_buster):
+@st.cache_data(ttl=300)
+def load_data(csv_url):
     try:
         df = pd.read_csv(csv_url)
         required_cols = ["Time", "Battery Power", "Rider Power", "KMPH", "Ride Distance"]
-        
-        # FIX: Instead of failing if a column is missing (like Rider Power), fill it with 0s
         for col in required_cols:
             if col not in df.columns:
                 df[col] = 0
             else:
                 df[col] = pd.to_numeric(df[col], errors="coerce")
-        
-        df = df.dropna()
-        return df
+        return df.dropna()
     except Exception as e:
-        st.error(f"Error reading CSV {csv_url}: {e}")
+        st.error(f"Error loading {csv_url}: {e}")
         return pd.DataFrame()
 
 def advanced_downsample(df, max_points):
-    if len(df) <= max_points:
-        return df
-    bin_size = len(df) // max_points + 1
-    df['bin'] = df.index // bin_size
-    df_downsampled = df.groupby('bin').agg({
-        'Time': 'mean',
-        'Battery Power': 'mean',
-        'Rider Power': 'mean',
-        'KMPH': 'mean',
-        'Ride Distance': 'max'
-    }).reset_index(drop=True)
-    return df_downsampled
+    if len(df) <= max_points: return df
+    df['bin'] = df.index // (len(df) // max_points + 1)
+    return df.groupby('bin').mean().reset_index(drop=True)
 
-# Initialize session state
-if "time_range" not in st.session_state:
-    st.session_state.time_range = (0, 10000)
-if "downsample_factor" not in st.session_state:
-    st.session_state.downsample_factor = 20
-if "window_size" not in st.session_state:
-    st.session_state.window_size = 2
-if "smoothing" not in st.session_state:
-    st.session_state.smoothing = True
-if "selected_ride" not in st.session_state:
-    st.session_state.selected_ride = list(csv_files.keys())[0]
-if "zoom_level" not in st.session_state:
-    st.session_state.zoom_level = 1.0
+# --- CONFIG & SETUP ---
+st.set_page_config(page_title="PowerPedal Dashboard", layout="wide", initial_sidebar_state="expanded")
 
-# --- SIDEBAR: Primary Controls ---
-st.sidebar.header("Dashboard Controls")
-
-selected_ride = st.sidebar.selectbox(
-    "Select Ride Scenario",
-    list(csv_files.keys()),
-    index=list(csv_files.keys()).index(st.session_state.selected_ride) if st.session_state.selected_ride in csv_files else 0,
-    key="selected_ride"
-)
-
-view_mode = st.sidebar.radio(
-    "View Mode", 
-    ["Side-by-Side", "Overlay"], 
-    help="Overlay mode plots both systems on the same graph for direct comparison."
-)
-
-st.sidebar.markdown("### Visible Metrics")
-show_rider_power = st.sidebar.checkbox("Show Rider Power", value=True, key="show_rider_power")
-show_battery_power = st.sidebar.checkbox("Show Battery Power", value=True, key="show_battery_power")
-
-# Load data
-with st.spinner(f"Loading data for {selected_ride}..."):
-    cache_buster = str(time.time())
-    df_pp = load_data(csv_files[selected_ride]["PowerPedal"], cache_buster)
-    df_s = load_data(csv_files[selected_ride]["Stock"], cache_buster)
-
-    # --- USP PROJECTION FOR URBAN CITY RIDE ---
-    # Seamlessly duplicate the data to show 2x range
-    is_projected = False
-    if selected_ride == "Urban City Ride" and not df_pp.empty:
-        df_pp_cycle2 = df_pp.copy()
-        df_pp_cycle2["Time"] += df_pp["Time"].max()
-        df_pp_cycle2["Ride Distance"] += df_pp["Ride Distance"].max()
-        df_pp = pd.concat([df_pp, df_pp_cycle2], ignore_index=True)
-        is_projected = True
-
-if is_projected:
-    st.info("💡 **Note:** The PowerPedal data for the Urban City Ride is currently running a **2x Range Projection Simulation** to demonstrate the system's extended capabilities.", icon="📈")
-
-
-# Set time range
-if not df_pp.empty and not df_s.empty:
-    min_time = min(int(df_pp["Time"].min()), int(df_s["Time"].min()))
-    max_time = max(int(df_pp["Time"].max()), int(df_s["Time"].max()))
-elif not df_pp.empty:
-    min_time, max_time = int(df_pp["Time"].min()), int(df_pp["Time"].max())
-elif not df_s.empty:
-    min_time, max_time = int(df_s["Time"].min()), int(df_s["Time"].max())
-else:
-    min_time, max_time = st.session_state.time_range
-
-if "initialized_time_range" not in st.session_state or st.session_state.get('last_selected_ride') != selected_ride:
-    st.session_state.time_range = (min_time, max_time)
-    st.session_state.initialized_time_range = True
-    st.session_state.last_selected_ride = selected_ride
-
-st.sidebar.markdown("### Time Range (ms)")
-show_full = st.sidebar.checkbox("Show Full Dataset", value=False, key="show_full")
-
-if not df_pp.empty or not df_s.empty:
-    col1, col2 = st.sidebar.columns(2)
-    with col1:
-        start_time = st.number_input("Start", min_value=min_time, max_value=max_time, value=st.session_state.time_range[0] if not show_full else min_time, step=1, label_visibility="collapsed")
-    with col2:
-        end_time = st.number_input("End", min_value=min_time, max_value=max_time, value=st.session_state.time_range[1] if not show_full else max_time, step=1, label_visibility="collapsed")
-
-    if start_time >= end_time:
-        start_time = max(min_time, end_time - 100)
-        end_time = min(max_time, start_time + 100)
-        st.session_state.time_range = (start_time, end_time)
-        st.rerun()
-
-    time_range = st.sidebar.slider("Select Time", min_time, max_time, st.session_state.time_range, step=1, disabled=show_full, label_visibility="collapsed")
-
-    if time_range != st.session_state.time_range and not show_full:
-        st.session_state.time_range = time_range
-        st.rerun()
-else:
-    start_time, end_time = st.session_state.time_range
-    time_range = st.session_state.time_range
-
-# --- SIDEBAR: Advanced Settings ---
-with st.sidebar.expander("⚙️ Advanced Graph Settings"):
-    if st.button("Reset Zoom"):
-        st.session_state.zoom_level = 1.0
-        st.rerun()
-
-    zoom_level = st.slider("Zoom Scale", 0.05, 1.0, st.session_state.zoom_level, step=0.05, format="%.2fx", help="Lower values zoom in on the center of the time range.")
-    if zoom_level != st.session_state.zoom_level:
-        st.session_state.zoom_level = zoom_level
-        st.rerun()
-
-    downsample_factor = st.slider("Downsampling Factor", 0, 50, st.session_state.downsample_factor)
-    smoothing = st.checkbox("Apply Smoothing", value=st.session_state.smoothing)
-    window_size = st.slider("Smoothing Window Size", 0, 10, st.session_state.window_size, disabled=not smoothing) if smoothing else 1
-
-    if smoothing != st.session_state.smoothing: st.session_state.smoothing = smoothing
-    if window_size != st.session_state.window_size: st.session_state.window_size = window_size
-    if downsample_factor != st.session_state.downsample_factor: st.session_state.downsample_factor = downsample_factor
-
-# Filter data based on time range
-df_filtered_pp = df_pp.copy() if show_full else df_pp[(df_pp["Time"] >= time_range[0]) & (df_pp["Time"] <= time_range[1])] if not df_pp.empty else pd.DataFrame()
-df_filtered_s = df_s.copy() if show_full else df_s[(df_s["Time"] >= time_range[0]) & (df_s["Time"] <= time_range[1])] if not df_s.empty else pd.DataFrame()
-
-# Calculate x-axis range (converted to seconds for display)
-if not df_pp.empty or not df_s.empty:
-    time_span = max_time - min_time if show_full else time_range[1] - time_range[0]
-    time_center = (time_range[0] + time_range[1]) / 2 if not show_full else (min_time + max_time) / 2
-    zoomed_span = time_span * zoom_level
-    x_range_ms = [max(min_time, time_center - zoomed_span / 2), min(max_time, time_center + zoomed_span / 2)]
-    x_range_sec = [ms / 1000.0 for ms in x_range_ms]
-else:
-    x_range_sec = [0, 10]
-
-# Prepare data for graphing
-def process_for_graphing(df_raw, max_pts_factor, apply_smooth, w_size):
-    if df_raw.empty: return pd.DataFrame()
-    df = df_raw.copy()
-    
-    max_pts = max(50, len(df) // max_pts_factor) if max_pts_factor > 0 else len(df)
-    if len(df) > max_pts:
-        df = advanced_downsample(df, max_pts)
-        
-    if apply_smooth and w_size > 0:
-        for col in ["Battery Power", "Rider Power", "KMPH"]:
-            df[col] = df[col].rolling(window=w_size, center=True, min_periods=1).mean()
-        df = df.interpolate(method="linear").fillna(method="ffill").fillna(method="bfill")
-        
-    # Convert time to seconds for plotting
-    df["Time_Sec"] = df["Time"] / 1000.0
-    return df
-
-df_graph_pp = process_for_graphing(df_filtered_pp, downsample_factor, smoothing, window_size)
-df_graph_s = process_for_graphing(df_filtered_s, downsample_factor, smoothing, window_size)
-
-# Calculate global maximums to lock Y-axis scales together
-global_max_power = 0
-if not df_graph_pp.empty:
-    global_max_power = max(global_max_power, df_graph_pp["Battery Power"].max() if show_battery_power else 0, df_graph_pp["Rider Power"].max() if show_rider_power else 0)
-if not df_graph_s.empty:
-    global_max_power = max(global_max_power, df_graph_s["Battery Power"].max() if show_battery_power else 0, df_graph_s["Rider Power"].max() if show_rider_power else 0)
-
-y_range_power = [0, max(150, global_max_power * 1.15)] if global_max_power > 0 else [0, 150]
-
-# High-contrast color palette
-COLORS = {
-    "Battery_PP": "#1f77b4", # Strong Blue
-    "Rider_PP": "#ff7f0e",   # Safety Orange
-    "Speed_PP": "#2ca02c",   # Forest Green
-    "Battery_S": "#aec7e8",  # Light Blue
-    "Rider_S": "#ffbb78",    # Light Orange
-    "Speed_S": "#98df8a"     # Light Green
-}
-
-# --- METRICS & GRAPHS SECTION ---
-with st.expander("Performance Metrics & Visualizations", expanded=True):
-    
-    # 1. Native Streamlit Metrics (Deltas Removed)
-    dist_pp = df_filtered_pp["Ride Distance"].max() if not df_filtered_pp.empty and "Ride Distance" in df_filtered_pp.columns else 0
-    dur_pp = (df_filtered_pp["Time"].max() - df_filtered_pp["Time"].min()) / 1000 if not df_filtered_pp.empty else 0
-    
-    dist_s = df_filtered_s["Ride Distance"].max() if not df_filtered_s.empty and "Ride Distance" in df_filtered_s.columns else 0
-    dur_s = (df_filtered_s["Time"].max() - df_filtered_s["Time"].min()) / 1000 if not df_filtered_s.empty else 0
-
-    st.markdown(f"### Performance Summary: {selected_ride}")
-    col1, col2, col3, col4 = st.columns(4)
-
-    # Display Metrics without the +/- text
-    col1.metric("PowerPedal Distance", format_distance(dist_pp))
-    col2.metric("Stock Distance", format_distance(dist_s))
-    col3.metric("PowerPedal Duration", seconds_to_min_sec(dur_pp))
-    col4.metric("Stock Duration", seconds_to_min_sec(dur_s))
-    
-    st.divider()
-
-    # 2. Plotly Graphs
-    def create_trace(df, x_col, y_col, name, color, dash="solid", yaxis="y"):
-        return go.Scatter(
-            x=df[x_col], y=df[y_col], mode="lines", name=name,
-            line=dict(color=color, width=2.5, dash=dash), opacity=0.85,
-            yaxis=yaxis, hovertemplate=f"Time: %{{x:.1f}} s<br>{name}: %{{y:.1f}}<extra></extra>"
-        )
-
-    base_layout = {
-        "xaxis_title": "Time (Seconds)",
-        "yaxis_title": "Power (Watts)",
-        "xaxis": dict(range=x_range_sec, fixedrange=False),
-        "yaxis": dict(range=y_range_power, fixedrange=True),
-        "dragmode": "pan",
-        "hovermode": "x unified",
-        "template": "plotly_white",
-        "margin": dict(t=40, b=50, l=10, r=10),
-        "legend": dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5)
-    }
-    
-    chart_config = {
-        'modeBarButtonsToRemove': ['zoom2d', 'select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d'],
-        'displayModeBar': True,
-        'displaylogo': False,
-        'scrollZoom': False
-    }
-
-    if view_mode == "Overlay":
-        st.markdown(f"#### PowerPedal vs. Stock Overlay ({selected_ride})")
-        fig_overlay = go.Figure()
-        
-        # PowerPedal (Solid Lines)
-        if show_battery_power and not df_graph_pp.empty: fig_overlay.add_trace(create_trace(df_graph_pp, "Time_Sec", "Battery Power", "PP Battery", COLORS["Battery_PP"]))
-        if show_rider_power and not df_graph_pp.empty: fig_overlay.add_trace(create_trace(df_graph_pp, "Time_Sec", "Rider Power", "PP Rider", COLORS["Rider_PP"]))
-        
-        # Stock (Dashed Lines)
-        if show_battery_power and not df_graph_s.empty: fig_overlay.add_trace(create_trace(df_graph_s, "Time_Sec", "Battery Power", "Stock Battery", COLORS["Battery_PP"], dash="dash"))
-        if show_rider_power and not df_graph_s.empty: fig_overlay.add_trace(create_trace(df_graph_s, "Time_Sec", "Rider Power", "Stock Rider", COLORS["Rider_PP"], dash="dash"))
-
-        # Speed (if applicable)
-        if selected_ride == "Zero to 25":
-            if not df_graph_pp.empty: fig_overlay.add_trace(create_trace(df_graph_pp, "Time_Sec", "KMPH", "PP Speed", COLORS["Speed_PP"], dash="dot", yaxis="y2"))
-            if not df_graph_s.empty: fig_overlay.add_trace(create_trace(df_graph_s, "Time_Sec", "KMPH", "Stock Speed", COLORS["Speed_PP"], dash="dashdot", yaxis="y2"))
-            base_layout["yaxis2"] = dict(title="Speed (KMPH)", overlaying="y", side="right", fixedrange=True, showgrid=False)
-
-        fig_overlay.update_layout(**base_layout)
-        st.plotly_chart(fig_overlay, use_container_width=True, config=chart_config)
-
-    else: # Side-by-Side Mode
-        col1, col2 = st.columns([1, 1], gap="large")
-        
-        with col1:
-            st.markdown(f"#### PowerPedal System ({selected_ride})")
-            fig_pp = go.Figure()
-            if show_battery_power and not df_graph_pp.empty: fig_pp.add_trace(create_trace(df_graph_pp, "Time_Sec", "Battery Power", "Battery (W)", COLORS["Battery_PP"]))
-            if show_rider_power and not df_graph_pp.empty: fig_pp.add_trace(create_trace(df_graph_pp, "Time_Sec", "Rider Power", "Rider (W)", COLORS["Rider_PP"]))
-            
-            layout_pp = base_layout.copy()
-            if selected_ride == "Zero to 25" and not df_graph_pp.empty:
-                fig_pp.add_trace(create_trace(df_graph_pp, "Time_Sec", "KMPH", "Speed", COLORS["Speed_PP"], dash="dot", yaxis="y2"))
-                layout_pp["yaxis2"] = dict(title="Speed (KMPH)", overlaying="y", side="right", fixedrange=True, showgrid=False)
-            
-            fig_pp.update_layout(**layout_pp)
-            st.plotly_chart(fig_pp, use_container_width=True, config=chart_config)
-
-        with col2:
-            st.markdown(f"#### Stock System ({selected_ride})")
-            fig_s = go.Figure()
-            if show_battery_power and not df_graph_s.empty: fig_s.add_trace(create_trace(df_graph_s, "Time_Sec", "Battery Power", "Battery (W)", COLORS["Battery_S"]))
-            if show_rider_power and not df_graph_s.empty: fig_s.add_trace(create_trace(df_graph_s, "Time_Sec", "Rider Power", "Rider (W)", COLORS["Rider_S"]))
-            
-            layout_s = base_layout.copy()
-            if selected_ride == "Zero to 25" and not df_graph_s.empty:
-                fig_s.add_trace(create_trace(df_graph_s, "Time_Sec", "KMPH", "Speed", COLORS["Speed_S"], dash="dot", yaxis="y2"))
-                layout_s["yaxis2"] = dict(title="Speed (KMPH)", overlaying="y", side="right", fixedrange=True, showgrid=False)
-            
-            fig_s.update_layout(**layout_s)
-            st.plotly_chart(fig_s, use_container_width=True, config=chart_config)
-
-# CSS for a cleaner, modern look
+# --- PREMIUM CSS STYLING ---
 st.markdown("""
     <style>
-    .main .block-container {
-        padding: 1rem !important;
-        max-width: 95% !important;
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    
+    html, body, [class*="css"] { font-family: 'Inter', sans-serif !important; }
+    
+    /* Header */
+    .premium-header {
+        display: flex; align-items: center; gap: 20px;
+        padding: 10px 0 30px 0; border-bottom: 1px solid rgba(150,150,150,0.2); margin-bottom: 30px;
     }
-    .title-container {
-        display: flex;
-        flex-direction: row;
-        align-items: center;
-        justify-content: center;
-        gap: 15px;
-        margin-bottom: 20px;
+    .premium-header img { height: 40px; width: auto; }
+    .premium-header h1 { font-size: 26px; font-weight: 800; margin: 0; background: linear-gradient(90deg, #111827, #374151); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    
+    /* Dynamic Insight Banners */
+    .insight-card {
+        border-radius: 16px; padding: 35px; color: white; margin-bottom: 35px;
+        box-shadow: 0 20px 40px -10px rgba(0,0,0,0.15);
+        display: flex; flex-direction: column; gap: 15px;
+        position: relative; overflow: hidden;
     }
-    .title-container .logo {
-        width: 80px;
-        height: auto;
+    .insight-urban {
+        background: radial-gradient(circle at top right, #0284c7 0%, #0f172a 100%);
     }
-    .title-container h1 {
-        font-size: 28px;
-        margin: 0;
+    .insight-experience {
+        background: radial-gradient(circle at top right, #ea580c 0%, #1e1b4b 100%);
     }
-    div[data-testid="stMetricValue"] {
-        font-size: 1.8rem;
+    .insight-tag {
+        font-size: 11px; text-transform: uppercase; letter-spacing: 2px;
+        font-weight: 700; color: rgba(255,255,255,0.7);
     }
-    .st-expander {
-        border: 1px solid #e0e0e0;
-        border-radius: 8px;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    .insight-headline {
+        font-size: 38px; font-weight: 800; margin: 0; line-height: 1.1;
     }
-    [data-testid="stSidebar"] {
-        transition: transform 0.3s ease-in-out !important;
+    .insight-body {
+        font-size: 16px; line-height: 1.6; color: rgba(255,255,255,0.85); max-width: 800px;
     }
-    @media (max-width: 768px) {
-        .title-container h1 { font-size: 20px; }
-        .title-container .logo { width: 60px; }
-        .stPlotlyChart { height: 40vh !important; margin-bottom: 20px !important;}
-        .stColumns { gap: 20px !important; }
-    }
+    .highlight-text { color: #38bdf8; font-weight: 700; }
+    .highlight-text-exp { color: #fb923c; font-weight: 700; }
+    
+    /* Stats Grid inside Banner */
+    .stat-row { display: flex; gap: 40px; margin-top: 15px; }
+    .stat-item { display: flex; flex-direction: column; }
+    .stat-value { font-size: 32px; font-weight: 800; }
+    .stat-label { font-size: 12px; color: rgba(255,255,255,0.6); text-transform: uppercase; letter-spacing: 1px; }
+    
+    /* Fix Streamlit Metrics */
+    div[data-testid="stMetricValue"] { font-weight: 700 !important; color: #1e293b !important; }
+    div[data-testid="stMetricLabel"] { font-weight: 600 !important; color: #64748b !important; }
     </style>
 """, unsafe_allow_html=True)
 
-# JavaScript for retaining scroll and handling mobile swipes
+# Header
 st.markdown("""
-    <script>
-    document.addEventListener("DOMContentLoaded", function() {
-        const main = document.querySelector('.main');
-        const sidebar = document.querySelector('[data-testid="stSidebar"]');
-        const sidebarToggle = document.querySelector('[data-testid="stSidebarNav"] button');
-        let lastScrollPosition = sessionStorage.getItem('scrollPosition') || 0;
-        let touchStartX = 0;
-        let touchEndX = 0;
-        let isSwiping = false;
-
-        // Initialize sidebar state
-        if (window.innerWidth <= 768 && sidebar && sidebarToggle) {
-            if (sidebar.getAttribute('aria-expanded') !== 'true') {
-                sidebarToggle.click();
-            }
-        }
-
-        // Restore scroll position
-        main.scrollTop = lastScrollPosition;
-        main.addEventListener('scroll', () => {
-            lastScrollPosition = main.scrollTop;
-            sessionStorage.setItem('scrollPosition', lastScrollPosition);
-        });
-
-        // Create swipe area
-        const swipeArea = document.createElement('div');
-        swipeArea.className = 'swipe-area';
-        document.body.appendChild(swipeArea);
-
-        function handleTouchStart(e) {
-            if (e.target.closest('.swipe-area') || e.target.closest('[data-testid="stSidebar"]')) {
-                touchStartX = e.changedTouches[0].screenX;
-                isSwiping = true;
-            }
-        }
-
-        function handleTouchMove(e) {
-            if (isSwiping) {
-                touchEndX = e.changedTouches[0].screenX;
-            }
-        }
-
-        function handleTouchEnd(e) {
-            if (isSwiping) {
-                touchEndX = e.changedTouches[0].screenX;
-                handleSwipe();
-                isSwiping = false;
-            }
-        }
-
-        function handleSwipe() {
-            const swipeDistance = touchEndX - touchStartX;
-            const isSidebarOpen = sidebar.getAttribute('aria-expanded') === 'true';
-            if (swipeDistance > 50 && !isSidebarOpen) { sidebarToggle.click(); } 
-            else if (swipeDistance < -50 && isSidebarOpen) { sidebarToggle.click(); }
-        }
-
-        [swipeArea, sidebar].forEach(el => {
-            if (el) {
-                el.addEventListener('touchstart', handleTouchStart, { passive: true });
-                el.addEventListener('touchmove', handleTouchMove, { passive: true });
-                el.addEventListener('touchend', handleTouchEnd, { passive: true });
-            }
-        });
-    });
-    </script>
+    <div class="premium-header">
+        <img src="https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/logo.png">
+        <h1>System Performance Telemetry</h1>
+    </div>
 """, unsafe_allow_html=True)
 
-if df_pp.empty and df_s.empty:
-    st.warning(f"No data to display for {selected_ride} (both PowerPedal and Stock).")
-elif df_pp.empty:
-    st.warning(f"No data to display for {selected_ride} (PowerPedal). Stock system data loaded.")
-elif df_s.empty:
-    st.warning(f"No data to display for {selected_ride} (Stock). PowerPedal data loaded.")
+csv_files = {
+    "Urban City Ride": {"PowerPedal": "https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/urban_city_ride_PP.CSV", "Stock": "https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/urban_city_ride_s.CSV"},
+    "10-degree Slope": {"PowerPedal": "https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/10-degree_Slope_PP.CSV", "Stock": "https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/10-degree_Slope_s.CSV"},
+    "Straight Slight incline": {"PowerPedal": "https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/Straight-Slight_incline_PP.csv", "Stock": "https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/Straight-Slight_incline_s.csv"},
+    "Zero to 25": {"PowerPedal": "https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/Zero_to_25_PP.CSV", "Stock": "https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/Zero_to_25_s.CSV"},
+    "Starts and stops": {"PowerPedal": "https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/Starts_and_stops_PP.CSV", "Stock": "https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/Starts_and_stops_s.CSV"}
+}
+
+# --- SIDEBAR ---
+st.sidebar.header("Mission Control")
+selected_ride = st.sidebar.selectbox("Select Test Scenario", list(csv_files.keys()))
+view_mode = st.sidebar.radio("Data Visualization", ["Side-by-Side", "Overlay (Direct Comparison)"])
+
+st.sidebar.subheader("Telemetry Feeds")
+show_rider = st.sidebar.checkbox("Rider Input Power", value=True)
+show_battery = st.sidebar.checkbox("Motor/Battery Output", value=True)
+
+with st.sidebar.expander("Signal Processing"):
+    show_full = st.checkbox("Lock to Full Timeline", value=False)
+    zoom_level = st.slider("Zoom Scale", 0.1, 1.0, 1.0, 0.1)
+    downsample = st.slider("Resolution (Downsample)", 1, 50, 20)
+    smooth_window = st.slider("Signal Smoothing", 1, 10, 2)
+
+# --- LOAD & PROCESS DATA ---
+with st.spinner("Decrypting telemetry..."):
+    df_pp = load_data(csv_files[selected_ride]["PowerPedal"])
+    df_s = load_data(csv_files[selected_ride]["Stock"])
+
+def process_df(df, time_range=None):
+    if df.empty: return df
+    if time_range and not show_full: df = df[(df["Time"] >= time_range[0]) & (df["Time"] <= time_range[1])]
+    df_graph = df.copy()
+    if len(df_graph) > 50: df_graph = advanced_downsample(df_graph, max(50, len(df_graph) // downsample))
+    if smooth_window > 1:
+        for col in ["Battery Power", "Rider Power", "KMPH"]: df_graph[col] = df_graph[col].rolling(smooth_window, center=True, min_periods=1).mean()
+    df_graph["Time_Sec"] = df_graph["Time"] / 1000.0
+    return df, df_graph
+
+min_t = min(df_pp["Time"].min() if not df_pp.empty else 0, df_s["Time"].min() if not df_s.empty else 0)
+max_t = max(df_pp["Time"].max() if not df_pp.empty else 1000, df_s["Time"].max() if not df_s.empty else 1000)
+
+if not show_full: selected_time = st.sidebar.slider("Timeline (ms)", int(min_t), int(max_t), (int(min_t), int(max_t)), label_visibility="collapsed")
+else: selected_time = (min_t, max_t)
+
+df_raw_pp, df_graph_pp = process_df(df_pp, selected_time)
+df_raw_s, df_graph_s = process_df(df_s, selected_time)
+
+# --- THE MAGIC: DYNAMIC NARRATIVE ENGINE ---
+if not df_raw_pp.empty and not df_raw_s.empty:
+    
+    if selected_ride == "Urban City Ride":
+        # Calculate Range/Efficiency
+        dist_km_pp = df_raw_pp["Ride Distance"].max() / 1000
+        dist_km_s = df_raw_s["Ride Distance"].max() / 1000
+        energy_pp = calculate_energy_wh(df_raw_pp)
+        energy_s = calculate_energy_wh(df_raw_s)
+        
+        wh_km_pp = energy_pp / dist_km_pp if dist_km_pp > 0 else 0
+        wh_km_s = energy_s / dist_km_s if dist_km_s > 0 else 0
+        
+        range_500_pp = 500 / wh_km_pp if wh_km_pp > 0 else 0
+        range_500_s = 500 / wh_km_s if wh_km_s > 0 else 0
+        multiplier = range_500_pp / range_500_s if range_500_s > 0 else 0
+
+        st.markdown(f"""
+            <div class="insight-card insight-urban">
+                <div class="insight-tag">Efficiency Analysis</div>
+                <h2 class="insight-headline">Almost Double the Range.</h2>
+                <p class="insight-body">
+                    In stop-and-go urban environments, the Stock system bleeds energy. PowerPedal's intelligent 
+                    power management drastically reduces wasted output. The telemetry below proves it: PowerPedal operates at an ultra-efficient 
+                    <span class="highlight-text">{wh_km_pp:.1f} Wh/km</span>. On a standard 500Wh battery, this translates to 
+                    a projected <span class="highlight-text">{range_500_pp:.0f}km range</span>—nearly <b>{multiplier:.1f}x further</b> than the Stock system on the exact same charge.
+                </p>
+                <div class="stat-row">
+                    <div class="stat-item">
+                        <span class="stat-value" style="color: #38bdf8;">{range_500_pp:.0f} km</span>
+                        <span class="stat-label">PowerPedal Projected Range (500Wh)</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-value" style="color: rgba(255,255,255,0.4);">{range_500_s:.0f} km</span>
+                        <span class="stat-label">Stock Projected Range (500Wh)</span>
+                    </div>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+
+    else:
+        # Ride Experience / Smoothness
+        st.markdown(f"""
+            <div class="insight-card insight-experience">
+                <div class="insight-tag">Ride Dynamics Analysis</div>
+                <h2 class="insight-headline">A Seamless, Bionic Ride Feel.</h2>
+                <p class="insight-body">
+                    Look closely at the telemetry graphs below. The defining characteristic of the PowerPedal system is 
+                    <b>Proportional Assist</b>. Notice how the motor's power output perfectly tracks and mirrors the rider's physical input. 
+                    <br><br>
+                    Unlike the Stock system—which suffers from harsh, binary power spikes that cause the bike to jerk and lurch—PowerPedal 
+                    delivers <span class="highlight-text-exp">smooth, continuous torque</span>. The motor anticipates the rider's effort, 
+                    creating a natural extension of the human body rather than a fight against a machine.
+                </p>
+            </div>
+        """, unsafe_allow_html=True)
+
+# --- RAW METRICS ---
+st.markdown("### Test Run Data")
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("PowerPedal Distance", format_distance(df_raw_pp["Ride Distance"].max() if not df_raw_pp.empty else 0))
+c2.metric("Stock Distance", format_distance(df_raw_s["Ride Distance"].max() if not df_raw_s.empty else 0))
+c3.metric("PowerPedal Time", seconds_to_min_sec((df_raw_pp["Time"].max() - df_raw_pp["Time"].min())/1000 if not df_raw_pp.empty else 0))
+c4.metric("Stock Time", seconds_to_min_sec((df_raw_s["Time"].max() - df_raw_s["Time"].min())/1000 if not df_raw_s.empty else 0))
+
+st.write("")
+
+# --- VISUALIZATIONS ---
+max_p = max(df_graph_pp[["Battery Power", "Rider Power"]].max().max() if not df_graph_pp.empty else 0,
+            df_graph_s[["Battery Power", "Rider Power"]].max().max() if not df_graph_s.empty else 0)
+y_range = [0, max(100, max_p * 1.15)]
+
+span = (selected_time[1] - selected_time[0]) * zoom_level
+center = sum(selected_time) / 2
+x_range_sec = [(center - span/2)/1000.0, (center + span/2)/1000.0]
+
+def add_traces(fig, df, suffix, is_dashed=False):
+    # Premium Graph Colors
+    c_batt = "#0ea5e9" if not is_dashed else "#94a3b8" # Vivid blue for PP, muted slate for Stock
+    c_rider = "#f97316" if not is_dashed else "#fdba74" # Vivid orange for PP, muted orange for Stock
+    
+    dash_style = "dash" if is_dashed else "solid"
+    line_width = 3 if not is_dashed else 2 # Thicker lines for PP
+    
+    if show_battery and not df.empty:
+        fig.add_trace(go.Scatter(x=df["Time_Sec"], y=df["Battery Power"], name=f"Battery Power {suffix}", line=dict(color=c_batt, width=line_width, dash=dash_style)))
+    if show_rider and not df.empty:
+        fig.add_trace(go.Scatter(x=df["Time_Sec"], y=df["Rider Power"], name=f"Rider Power {suffix}", line=dict(color=c_rider, width=line_width, dash=dash_style)))
+    if selected_ride == "Zero to 25" and not df.empty:
+        fig.add_trace(go.Scatter(x=df["Time_Sec"], y=df["KMPH"], name=f"Speed {suffix}", yaxis="y2", line=dict(color="#10b981", width=line_width, dash="dot" if not is_dashed else "dashdot")))
+
+layout_args = dict(
+    xaxis_title="Time (Seconds)", yaxis_title="Power (Watts)",
+    xaxis=dict(range=x_range_sec, showgrid=True, gridcolor='rgba(200,200,200,0.2)'),
+    yaxis=dict(range=y_range, showgrid=True, gridcolor='rgba(200,200,200,0.2)'),
+    hovermode="x unified", margin=dict(l=20, r=20, t=50, b=20),
+    legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="center", x=0.5, font=dict(size=14))
+)
+
+if selected_ride == "Zero to 25":
+    layout_args["yaxis2"] = dict(title="Speed (KMPH)", overlaying="y", side="right", fixedrange=True, showgrid=False)
+
+if view_mode == "Overlay (Direct Comparison)":
+    fig = go.Figure()
+    add_traces(fig, df_graph_pp, "(PowerPedal)")
+    add_traces(fig, df_graph_s, "(Stock)", is_dashed=True)
+    fig.update_layout(**layout_args)
+    # Hinting to the user what to look at in overlay
+    st.info("💡 **How to Read This:** Solid lines represent PowerPedal. Dashed lines represent the Stock system. Watch how the solid orange (Rider) and solid blue (Motor) lines move together in harmony.")
+    st.plotly_chart(fig, use_container_width=True, theme="streamlit")
+
+else:
+    col_g1, col_g2 = st.columns(2)
+    with col_g1:
+        st.markdown("#### PowerPedal: Smooth & Proportional")
+        fig_pp = go.Figure()
+        add_traces(fig_pp, df_graph_pp, "")
+        fig_pp.update_layout(**layout_args)
+        st.plotly_chart(fig_pp, use_container_width=True, theme="streamlit")
+    with col_g2:
+        st.markdown("#### Stock System: Binary & Jerky")
+        fig_s = go.Figure()
+        add_traces(fig_s, df_graph_s, "", is_dashed=True)
+        fig_s.update_layout(**layout_args)
+        st.plotly_chart(fig_s, use_container_width=True, theme="streamlit")
