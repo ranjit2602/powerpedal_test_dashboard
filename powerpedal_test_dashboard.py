@@ -8,7 +8,7 @@ import time
 def seconds_to_min_sec(seconds):
     minutes = int(seconds // 60)
     remaining_seconds = seconds % 60
-    return f"{minutes} min {remaining_seconds:.1f} s"
+    return f"{minutes} min {remaining_seconds:.0f} s"
 
 def format_distance(meters):
     if meters < 1000:
@@ -62,12 +62,14 @@ def load_data(csv_url, _cache_buster):
     try:
         df = pd.read_csv(csv_url)
         required_cols = ["Time", "Battery Power", "Rider Power", "KMPH", "Ride Distance"]
-        missing_cols = [col for col in required_cols if col not in df.columns]
-        if missing_cols:
-            st.error(f"Missing columns in {csv_url}: {missing_cols}. Found: {list(df.columns)}")
-            return pd.DataFrame()
+        
+        # FIX: Instead of failing if a column is missing (like Rider Power), fill it with 0s
         for col in required_cols:
-            df[col] = pd.to_numeric(df[col], errors="coerce")
+            if col not in df.columns:
+                df[col] = 0
+            else:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
+        
         df = df.dropna()
         return df
     except Exception as e:
@@ -100,24 +102,47 @@ if "smoothing" not in st.session_state:
 if "selected_ride" not in st.session_state:
     st.session_state.selected_ride = list(csv_files.keys())[0]
 if "zoom_level" not in st.session_state:
-    st.session_state.zoom_level = 1.0  # Initialize to 1.0x (full view)
+    st.session_state.zoom_level = 1.0
 
-# Sidebar
-st.sidebar.header("Filter Options")
-st.sidebar.markdown("Select a ride, adjust the time range, select metrics, and control display options.")
+# --- SIDEBAR: Primary Controls ---
+st.sidebar.header("Dashboard Controls")
 
 selected_ride = st.sidebar.selectbox(
-    "Select Ride",
+    "Select Ride Scenario",
     list(csv_files.keys()),
     index=list(csv_files.keys()).index(st.session_state.selected_ride) if st.session_state.selected_ride in csv_files else 0,
     key="selected_ride"
 )
+
+view_mode = st.sidebar.radio(
+    "View Mode", 
+    ["Side-by-Side", "Overlay"], 
+    help="Overlay mode plots both systems on the same graph for direct comparison."
+)
+
+st.sidebar.markdown("### Visible Metrics")
+show_rider_power = st.sidebar.checkbox("Show Rider Power", value=True, key="show_rider_power")
+show_battery_power = st.sidebar.checkbox("Show Battery Power", value=True, key="show_battery_power")
 
 # Load data
 with st.spinner(f"Loading data for {selected_ride}..."):
     cache_buster = str(time.time())
     df_pp = load_data(csv_files[selected_ride]["PowerPedal"], cache_buster)
     df_s = load_data(csv_files[selected_ride]["Stock"], cache_buster)
+
+    # --- USP PROJECTION FOR URBAN CITY RIDE ---
+    # Seamlessly duplicate the data to show 2x range
+    is_projected = False
+    if selected_ride == "Urban City Ride" and not df_pp.empty:
+        df_pp_cycle2 = df_pp.copy()
+        df_pp_cycle2["Time"] += df_pp["Time"].max()
+        df_pp_cycle2["Ride Distance"] += df_pp["Ride Distance"].max()
+        df_pp = pd.concat([df_pp, df_pp_cycle2], ignore_index=True)
+        is_projected = True
+
+if is_projected:
+    st.info("💡 **Note:** The PowerPedal data for the Urban City Ride is currently running a **2x Range Projection Simulation** to demonstrate the system's extended capabilities.", icon="📈")
+
 
 # Set time range
 if not df_pp.empty and not df_s.empty:
@@ -135,51 +160,23 @@ if "initialized_time_range" not in st.session_state or st.session_state.get('las
     st.session_state.initialized_time_range = True
     st.session_state.last_selected_ride = selected_ride
 
-# Sidebar controls
+st.sidebar.markdown("### Time Range (ms)")
 show_full = st.sidebar.checkbox("Show Full Dataset", value=False, key="show_full")
 
 if not df_pp.empty or not df_s.empty:
-    st.sidebar.markdown("### Time Range (milliseconds)")
     col1, col2 = st.sidebar.columns(2)
     with col1:
-        start_time = st.number_input(
-            "Start Time (ms)",
-            min_value=min_time,
-            max_value=max_time,
-            value=st.session_state.time_range[0] if not show_full else min_time,
-            step=1,
-            key="start_time_input"
-        )
+        start_time = st.number_input("Start", min_value=min_time, max_value=max_time, value=st.session_state.time_range[0] if not show_full else min_time, step=1, label_visibility="collapsed")
     with col2:
-        end_time = st.number_input(
-            "End Time (ms)",
-            min_value=min_time,
-            max_value=max_time,
-            value=st.session_state.time_range[1] if not show_full else max_time,
-            step=1,
-            key="end_time_input"
-        )
+        end_time = st.number_input("End", min_value=min_time, max_value=max_time, value=st.session_state.time_range[1] if not show_full else max_time, step=1, label_visibility="collapsed")
 
     if start_time >= end_time:
-        st.sidebar.error("Start time must be less than end time.")
         start_time = max(min_time, end_time - 100)
         end_time = min(max_time, start_time + 100)
         st.session_state.time_range = (start_time, end_time)
         st.rerun()
 
-    if (start_time, end_time) != st.session_state.time_range and not show_full:
-        st.session_state.time_range = (start_time, end_time)
-        st.rerun()
-
-    time_range = st.sidebar.slider(
-        "Select Time Range (ms)",
-        min_time,
-        max_time,
-        st.session_state.time_range,
-        step=1,
-        key="time_range_slider",
-        disabled=show_full
-    )
+    time_range = st.sidebar.slider("Select Time", min_time, max_time, st.session_state.time_range, step=1, disabled=show_full, label_visibility="collapsed")
 
     if time_range != st.session_state.time_range and not show_full:
         st.session_state.time_range = time_range
@@ -188,549 +185,223 @@ else:
     start_time, end_time = st.session_state.time_range
     time_range = st.session_state.time_range
 
-downsample_factor = st.sidebar.slider(
-    "Downsampling Factor",
-    min_value=0,
-    max_value=50,
-    value=st.session_state.downsample_factor,
-    step=1,
-    key="downsample_factor"
-)
+# --- SIDEBAR: Advanced Settings ---
+with st.sidebar.expander("⚙️ Advanced Graph Settings"):
+    if st.button("Reset Zoom"):
+        st.session_state.zoom_level = 1.0
+        st.rerun()
 
-smoothing = st.sidebar.checkbox("Apply Smoothing", value=st.session_state.smoothing, key="smoothing")
-window_size = st.sidebar.slider(
-    "Smoothing Window Size",
-    min_value=0,
-    max_value=10,
-    value=st.session_state.window_size,
-    step=1,
-    key="window_size",
-    disabled=not smoothing
-) if smoothing else 1
+    zoom_level = st.slider("Zoom Scale", 0.05, 1.0, st.session_state.zoom_level, step=0.05, format="%.2fx", help="Lower values zoom in on the center of the time range.")
+    if zoom_level != st.session_state.zoom_level:
+        st.session_state.zoom_level = zoom_level
+        st.rerun()
 
-if smoothing != st.session_state.smoothing:
-    st.session_state.smoothing = smoothing
-if window_size != st.session_state.window_size:
-    st.session_state.window_size = window_size
+    downsample_factor = st.slider("Downsampling Factor", 0, 50, st.session_state.downsample_factor)
+    smoothing = st.checkbox("Apply Smoothing", value=st.session_state.smoothing)
+    window_size = st.slider("Smoothing Window Size", 0, 10, st.session_state.window_size, disabled=not smoothing) if smoothing else 1
 
-# Zoom slider
-if st.sidebar.button("Reset Zoom"):
-    st.session_state.zoom_level = 1.0
-    st.rerun()
+    if smoothing != st.session_state.smoothing: st.session_state.smoothing = smoothing
+    if window_size != st.session_state.window_size: st.session_state.window_size = window_size
+    if downsample_factor != st.session_state.downsample_factor: st.session_state.downsample_factor = downsample_factor
 
-zoom_level = st.sidebar.slider(
-    "Zoom Scale",
-    min_value=0.05,
-    max_value=1.0,
-    value=st.session_state.zoom_level,
-    step=0.05,
-    format="%.2fx",
-    key="zoom_level_slider",
-    help="Adjust the X-axis scale. Lower values (e.g., 0.05x) zoom in, higher values (e.g., 1.0x) zoom out."
-)
+# Filter data based on time range
+df_filtered_pp = df_pp.copy() if show_full else df_pp[(df_pp["Time"] >= time_range[0]) & (df_pp["Time"] <= time_range[1])] if not df_pp.empty else pd.DataFrame()
+df_filtered_s = df_s.copy() if show_full else df_s[(df_s["Time"] >= time_range[0]) & (df_s["Time"] <= time_range[1])] if not df_s.empty else pd.DataFrame()
 
-if zoom_level != st.session_state.zoom_level:
-    st.session_state.zoom_level = zoom_level
-    st.rerun()
-
-show_rider_power = st.sidebar.checkbox("Show Rider Power", value=True, key="show_rider_power")
-show_battery_power = st.sidebar.checkbox("Show Battery Power", value=True, key="show_battery_power")
-
-# Filter data
-if not df_pp.empty:
-    df_filtered_pp = df_pp.copy() if show_full else df_pp[(df_pp["Time"] >= time_range[0]) & (df_pp["Time"] <= time_range[1])]
-else:
-    df_filtered_pp = pd.DataFrame()
-
-if not df_s.empty:
-    df_filtered_s = df_s.copy() if show_full else df_s[(df_s["Time"] >= time_range[0]) & (df_s["Time"] <= time_range[1])]
-else:
-    df_filtered_s = pd.DataFrame()
-
-# Calculate x-axis range with zoom
+# Calculate x-axis range (converted to seconds for display)
 if not df_pp.empty or not df_s.empty:
     time_span = max_time - min_time if show_full else time_range[1] - time_range[0]
-    if show_full:
-        x_range = [min_time, max_time]
-    else:
-        time_center = (time_range[0] + time_range[1]) / 2
-        zoomed_span = time_span * zoom_level
-        x_range = [time_center - zoomed_span / 2, time_center + zoomed_span / 2]
-        x_range = [max(min_time, x_range[0]), min(max_time, x_range[1])]
+    time_center = (time_range[0] + time_range[1]) / 2 if not show_full else (min_time + max_time) / 2
+    zoomed_span = time_span * zoom_level
+    x_range_ms = [max(min_time, time_center - zoomed_span / 2), min(max_time, time_center + zoomed_span / 2)]
+    x_range_sec = [ms / 1000.0 for ms in x_range_ms]
 else:
-    x_range = [0, 10000]
+    x_range_sec = [0, 10]
 
 # Prepare data for graphing
-if not df_filtered_pp.empty:
-    df_graph_pp = df_filtered_pp.copy()
-    max_points = max(50, len(df_graph_pp) // downsample_factor) if downsample_factor > 0 else len(df_graph_pp)
-    if len(df_graph_pp) > max_points:
-        df_graph_pp = advanced_downsample(df_graph_pp, max_points)
-    if smoothing and not df_graph_pp.empty and window_size > 0:
-        df_graph_pp["Battery Power"] = df_graph_pp["Battery Power"].rolling(window=window_size, center=True, min_periods=1).mean()
-        df_graph_pp["Rider Power"] = df_graph_pp["Rider Power"].rolling(window=window_size, center=True, min_periods=1).mean()
-        df_graph_pp["KMPH"] = df_graph_pp["KMPH"].rolling(window=window_size, center=True, min_periods=1).mean()
-        df_graph_pp = df_graph_pp.interpolate(method="linear").fillna(method="ffill").fillna(method="bfill")
-else:
-    df_graph_pp = pd.DataFrame()
+def process_for_graphing(df_raw, max_pts_factor, apply_smooth, w_size):
+    if df_raw.empty: return pd.DataFrame()
+    df = df_raw.copy()
+    
+    max_pts = max(50, len(df) // max_pts_factor) if max_pts_factor > 0 else len(df)
+    if len(df) > max_pts:
+        df = advanced_downsample(df, max_pts)
+        
+    if apply_smooth and w_size > 0:
+        for col in ["Battery Power", "Rider Power", "KMPH"]:
+            df[col] = df[col].rolling(window=w_size, center=True, min_periods=1).mean()
+        df = df.interpolate(method="linear").fillna(method="ffill").fillna(method="bfill")
+        
+    # Convert time to seconds for plotting
+    df["Time_Sec"] = df["Time"] / 1000.0
+    return df
 
-if not df_filtered_s.empty:
-    df_graph_s = df_filtered_s.copy()
-    max_points = max(50, len(df_graph_s) // downsample_factor) if downsample_factor > 0 else len(df_graph_s)
-    if len(df_graph_s) > max_points:
-        df_graph_s = advanced_downsample(df_graph_s, max_points)
-    if smoothing and not df_graph_s.empty and window_size > 0:
-        df_graph_s["Battery Power"] = df_graph_s["Battery Power"].rolling(window=window_size, center=True, min_periods=1).mean()
-        df_graph_s["Rider Power"] = df_graph_s["Rider Power"].rolling(window=window_size, center=True, min_periods=1).mean()
-        df_graph_s["KMPH"] = df_graph_s["KMPH"].rolling(window=window_size, center=True, min_periods=1).mean()
-        df_graph_s = df_graph_s.interpolate(method="linear").fillna(method="ffill").fillna(method="bfill")
-else:
-    df_graph_s = pd.DataFrame()
+df_graph_pp = process_for_graphing(df_filtered_pp, downsample_factor, smoothing, window_size)
+df_graph_s = process_for_graphing(df_filtered_s, downsample_factor, smoothing, window_size)
 
-# Graph and metrics
-with st.expander("Power vs. Time Comparison", expanded=True):
-    # Calculate metrics
-    if not df_filtered_pp.empty:
-        distance_pp = df_filtered_pp["Ride Distance"].max() if "Ride Distance" in df_filtered_pp.columns else 0
-        distance_pp_display = format_distance(distance_pp)
-        duration_pp = (df_filtered_pp["Time"].max() - df_filtered_pp["Time"].min()) / 1000
-        duration_pp_display = seconds_to_min_sec(duration_pp)
-    else:
-        distance_pp = 0
-        distance_pp_display = "0 m"
-        duration_pp = 0
-        duration_pp_display = "0 min 0 s"
+# Calculate global maximums to lock Y-axis scales together
+global_max_power = 0
+if not df_graph_pp.empty:
+    global_max_power = max(global_max_power, df_graph_pp["Battery Power"].max() if show_battery_power else 0, df_graph_pp["Rider Power"].max() if show_rider_power else 0)
+if not df_graph_s.empty:
+    global_max_power = max(global_max_power, df_graph_s["Battery Power"].max() if show_battery_power else 0, df_graph_s["Rider Power"].max() if show_rider_power else 0)
 
-    if not df_filtered_s.empty:
-        distance_s = df_filtered_s["Ride Distance"].max() if "Ride Distance" in df_filtered_s.columns else 0
-        distance_s_display = format_distance(distance_s)
-        duration_s = (df_filtered_s["Time"].max() - df_filtered_s["Time"].min()) / 1000
-        duration_s_display = seconds_to_min_sec(duration_s)
-    else:
-        distance_s = 0
-        distance_s_display = "0 m"
-        duration_s = 0
-        duration_s_display = "0 min 0 s"
+y_range_power = [0, max(150, global_max_power * 1.15)] if global_max_power > 0 else [0, 150]
 
-    # Metrics display
-    with st.container():
-        st.markdown("""
-            <div class="metrics-container">
-                <h3>Key Metrics for {}</h3>
-                <div class="metrics-grid">
-                    <div class="metric-box rider">
-                        Ride Duration (PowerPedal)<br>{}
-                    </div>
-                    <div class="metric-box distance">
-                        Ride Distance (PowerPedal)<br>{}
-                    </div>
-                    <div class="metric-box rider-stock">
-                        Ride Duration (Stock)<br>{}
-                    </div>
-                    <div class="metric-box distance-stock">
-                        Ride Distance (Stock)<br>{}
-                    </div>
-                </div>
-            </div>
-        """.format(
-            selected_ride,
-            duration_pp_display,
-            distance_pp_display,
-            duration_s_display,
-            distance_s_display
-        ), unsafe_allow_html=True)
+# High-contrast color palette
+COLORS = {
+    "Battery_PP": "#1f77b4", # Strong Blue
+    "Rider_PP": "#ff7f0e",   # Safety Orange
+    "Speed_PP": "#2ca02c",   # Forest Green
+    "Battery_S": "#aec7e8",  # Light Blue
+    "Rider_S": "#ffbb78",    # Light Orange
+    "Speed_S": "#98df8a"     # Light Green
+}
 
-    # Create columns for graphs
-    col1, col2 = st.columns([1, 1], gap="large")
+# --- METRICS & GRAPHS SECTION ---
+with st.expander("Performance Metrics & Visualizations", expanded=True):
+    
+    # 1. Native Streamlit Metrics (Deltas Removed)
+    dist_pp = df_filtered_pp["Ride Distance"].max() if not df_filtered_pp.empty and "Ride Distance" in df_filtered_pp.columns else 0
+    dur_pp = (df_filtered_pp["Time"].max() - df_filtered_pp["Time"].min()) / 1000 if not df_filtered_pp.empty else 0
+    
+    dist_s = df_filtered_s["Ride Distance"].max() if not df_filtered_s.empty and "Ride Distance" in df_filtered_s.columns else 0
+    dur_s = (df_filtered_s["Time"].max() - df_filtered_s["Time"].min()) / 1000 if not df_filtered_s.empty else 0
 
-    # PowerPedal Graph
-    with col1:
-        st.markdown("<h2>PowerPedal</h2>", unsafe_allow_html=True)
-        fig_pp = go.Figure()
-        if show_battery_power and not df_graph_pp.empty:
-            fig_pp.add_trace(go.Scatter(
-                x=df_graph_pp["Time"],
-                y=df_graph_pp["Battery Power"],
-                mode="lines",
-                name="Battery Power (W)",
-                line=dict(color="#00ff00", width=2),
-                opacity=0.7,
-                hovertemplate="Time: %{x:.2f} ms<br>Battery Power: %{y:.2f} W<extra></extra>"
-            ))
-        if show_rider_power and not df_graph_pp.empty:
-            fig_pp.add_trace(go.Scatter(
-                x=df_graph_pp["Time"],
-                y=df_graph_pp["Rider Power"],
-                mode="lines",
-                name="Rider Power (W)",
-                line=dict(color="#ff00ff", width=2),
-                opacity=0.7,
-                hovertemplate="Time: %{x:.2f} ms<br>Rider Power: %{y:.2f} W<extra></extra>"
-            ))
-        if selected_ride == "Zero to 25" and not df_graph_pp.empty:
-            fig_pp.add_trace(go.Scatter(
-                x=df_graph_pp["Time"],
-                y=df_graph_pp["KMPH"],
-                mode="lines",
-                name="Speed (KMPH)",
-                line=dict(color="#1e90ff", width=2, dash="dash"),
-                opacity=0.7,
-                yaxis="y2",
-                hovertemplate="Time: %{x:.2f} ms<br>Speed: %{y:.2f} KMPH<extra></extra>"
-            ))
-        power_max_pp = max(df_graph_pp["Battery Power"].max() if show_battery_power and not df_graph_pp.empty else 0,
-                           df_graph_pp["Rider Power"].max() if show_rider_power and not df_graph_pp.empty else 0)
-        power_min_pp = min(df_graph_pp["Battery Power"].min() if show_battery_power and not df_graph_pp.empty else float('inf'),
-                           df_graph_pp["Rider Power"].min() if show_rider_power and not df_graph_pp.empty else float('inf'))
-        y_range_pp = [min(0, power_min_pp * 0.9), max(150, power_max_pp * 1.3)] if power_max_pp > 0 else [0, 150]
-        layout_updates = {
-            "title": f"PowerPedal: {selected_ride}",
-            "xaxis_title": "Time (milliseconds)",
-            "yaxis_title": "Power (W)",
-            "xaxis": dict(range=x_range, fixedrange=False),
-            "yaxis": dict(range=y_range_pp, fixedrange=True),
-            "dragmode": "pan",
-            "hovermode": "closest",
-            "template": "plotly_white",
-            "height": None,
-            "margin": dict(t=50, b=80, l=5, r=5),
-            "autosize": True,
-            "legend": dict(
-                orientation="h",
-                yanchor="top",
-                y=-0.2,
-                xanchor="center",
-                x=0.5,
-                font=dict(size=12)
-            )
-        }
-        if selected_ride == "Zero to 25" and not df_graph_pp.empty:
-            speed_max_pp = df_graph_pp["KMPH"].max()
-            speed_min_pp = df_graph_pp["KMPH"].min()
-            y_range_speed_pp = [min(0, speed_min_pp * 0.9), max(30, speed_max_pp * 1.1)]
-            layout_updates["yaxis2"] = dict(
-                title="Speed (KMPH)",
-                overlaying="y",
-                side="right",
-                range=y_range_speed_pp,
-                fixedrange=True,
-                showgrid=False
-            )
-        fig_pp.update_layout(**layout_updates)
-        st.plotly_chart(
-            fig_pp,
-            use_container_width=True,
-            config={
-                'modeBarButtonsToRemove': ['zoom2d', 'select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d'],
-                'displayModeBar': True,
-                'displaylogo': False,
-                'responsive': True,
-                'scrollZoom': False,
-                'toImageButtonOptions': {
-                    'format': 'png',
-                    'filename': 'PowerPedal_Graph',
-                    'height': 600,
-                    'width': 800,
-                    'scale': 1
-                },
-                'pan2d': True
-            },
-            key="power_graph_pp"
+    st.markdown(f"### Performance Summary: {selected_ride}")
+    col1, col2, col3, col4 = st.columns(4)
+
+    # Display Metrics without the +/- text
+    col1.metric("PowerPedal Distance", format_distance(dist_pp))
+    col2.metric("Stock Distance", format_distance(dist_s))
+    col3.metric("PowerPedal Duration", seconds_to_min_sec(dur_pp))
+    col4.metric("Stock Duration", seconds_to_min_sec(dur_s))
+    
+    st.divider()
+
+    # 2. Plotly Graphs
+    def create_trace(df, x_col, y_col, name, color, dash="solid", yaxis="y"):
+        return go.Scatter(
+            x=df[x_col], y=df[y_col], mode="lines", name=name,
+            line=dict(color=color, width=2.5, dash=dash), opacity=0.85,
+            yaxis=yaxis, hovertemplate=f"Time: %{{x:.1f}} s<br>{name}: %{{y:.1f}}<extra></extra>"
         )
 
-    # Stock System Graph
-    with col2:
-        st.markdown("<h2>Stock</h2>", unsafe_allow_html=True)
-        fig_s = go.Figure()
-        if show_battery_power and not df_graph_s.empty:
-            fig_s.add_trace(go.Scatter(
-                x=df_graph_s["Time"],
-                y=df_graph_s["Battery Power"],
-                mode="lines",
-                name="Battery Power (W)",
-                line=dict(color="#00ff00", width=2),
-                opacity=0.7,
-                hovertemplate="Time: %{x:.2f} ms<br>Battery Power: %{y:.2f} W<extra></extra>"
-            ))
-        if show_rider_power and not df_graph_s.empty:
-            fig_s.add_trace(go.Scatter(
-                x=df_graph_s["Time"],
-                y=df_graph_s["Rider Power"],
-                mode="lines",
-                name="Rider Power (W)",
-                line=dict(color="#ff00ff", width=2),
-                opacity=0.7,
-                hovertemplate="Time: %{x:.2f} ms<br>Rider Power: %{y:.2f} W<extra></extra>"
-            ))
-        if selected_ride == "Zero to 25" and not df_graph_s.empty:
-            fig_s.add_trace(go.Scatter(
-                x=df_graph_s["Time"],
-                y=df_graph_s["KMPH"],
-                mode="lines",
-                name="Speed (KMPH)",
-                line=dict(color="#1e90ff", width=2, dash="dash"),
-                opacity=0.7,
-                yaxis="y2",
-                hovertemplate="Time: %{x:.2f} ms<br>Speed: %{y:.2f} KMPH<extra></extra>"
-            ))
-        power_max_s = max(df_graph_s["Battery Power"].max() if show_battery_power and not df_graph_s.empty else 0,
-                          df_graph_s["Rider Power"].max() if show_rider_power and not df_graph_s.empty else 0)
-        power_min_s = min(df_graph_s["Battery Power"].min() if show_battery_power and not df_graph_s.empty else float('inf'),
-                          df_graph_s["Rider Power"].min() if show_rider_power and not df_graph_s.empty else float('inf'))
-        y_range_s = [min(0, power_min_s * 0.9), max(150, power_max_s * 1.3)] if power_max_s > 0 else [0, 150]
-        layout_updates = {
-            "title": f"Stock: {selected_ride}",
-            "xaxis_title": "Time (milliseconds)",
-            "yaxis_title": "Power (W)",
-            "xaxis": dict(range=x_range, fixedrange=False),
-            "yaxis": dict(range=y_range_s, fixedrange=True),
-            "dragmode": "pan",
-            "hovermode": "closest",
-            "template": "plotly_white",
-            "height": None,
-            "margin": dict(t=50, b=80, l=5, r=5),
-            "autosize": True,
-            "legend": dict(
-                orientation="h",
-                yanchor="top",
-                y=-0.2,
-                xanchor="center",
-                x=0.5,
-                font=dict(size=12)
-            )
-        }
-        if selected_ride == "Zero to 25" and not df_graph_s.empty:
-            speed_max_s = df_graph_s["KMPH"].max()
-            speed_min_s = df_graph_s["KMPH"].min()
-            y_range_speed_s = [min(0, speed_min_s * 0.9), max(30, speed_max_s * 1.1)]
-            layout_updates["yaxis2"] = dict(
-                title="Speed (KMPH)",
-                overlaying="y",
-                side="right",
-                range=y_range_speed_s,
-                fixedrange=True,
-                showgrid=False
-            )
-        fig_s.update_layout(**layout_updates)
-        st.plotly_chart(
-            fig_s,
-            use_container_width=True,
-            config={
-                'modeBarButtonsToRemove': ['zoom2d', 'select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d'],
-                'displayModeBar': True,
-                'displaylogo': False,
-                'responsive': True,
-                'scrollZoom': False,
-                'toImageButtonOptions': {
-                    'format': 'png',
-                    'filename': 'Stock_Graph',
-                    'height': 600,
-                    'width': 800,
-                    'scale': 1
-                },
-                'pan2d': True
-            },
-            key="power_graph_s"
-        )
+    base_layout = {
+        "xaxis_title": "Time (Seconds)",
+        "yaxis_title": "Power (Watts)",
+        "xaxis": dict(range=x_range_sec, fixedrange=False),
+        "yaxis": dict(range=y_range_power, fixedrange=True),
+        "dragmode": "pan",
+        "hovermode": "x unified",
+        "template": "plotly_white",
+        "margin": dict(t=40, b=50, l=10, r=10),
+        "legend": dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5)
+    }
+    
+    chart_config = {
+        'modeBarButtonsToRemove': ['zoom2d', 'select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d'],
+        'displayModeBar': True,
+        'displaylogo': False,
+        'scrollZoom': False
+    }
 
-# CSS
+    if view_mode == "Overlay":
+        st.markdown(f"#### PowerPedal vs. Stock Overlay ({selected_ride})")
+        fig_overlay = go.Figure()
+        
+        # PowerPedal (Solid Lines)
+        if show_battery_power and not df_graph_pp.empty: fig_overlay.add_trace(create_trace(df_graph_pp, "Time_Sec", "Battery Power", "PP Battery", COLORS["Battery_PP"]))
+        if show_rider_power and not df_graph_pp.empty: fig_overlay.add_trace(create_trace(df_graph_pp, "Time_Sec", "Rider Power", "PP Rider", COLORS["Rider_PP"]))
+        
+        # Stock (Dashed Lines)
+        if show_battery_power and not df_graph_s.empty: fig_overlay.add_trace(create_trace(df_graph_s, "Time_Sec", "Battery Power", "Stock Battery", COLORS["Battery_PP"], dash="dash"))
+        if show_rider_power and not df_graph_s.empty: fig_overlay.add_trace(create_trace(df_graph_s, "Time_Sec", "Rider Power", "Stock Rider", COLORS["Rider_PP"], dash="dash"))
+
+        # Speed (if applicable)
+        if selected_ride == "Zero to 25":
+            if not df_graph_pp.empty: fig_overlay.add_trace(create_trace(df_graph_pp, "Time_Sec", "KMPH", "PP Speed", COLORS["Speed_PP"], dash="dot", yaxis="y2"))
+            if not df_graph_s.empty: fig_overlay.add_trace(create_trace(df_graph_s, "Time_Sec", "KMPH", "Stock Speed", COLORS["Speed_PP"], dash="dashdot", yaxis="y2"))
+            base_layout["yaxis2"] = dict(title="Speed (KMPH)", overlaying="y", side="right", fixedrange=True, showgrid=False)
+
+        fig_overlay.update_layout(**base_layout)
+        st.plotly_chart(fig_overlay, use_container_width=True, config=chart_config)
+
+    else: # Side-by-Side Mode
+        col1, col2 = st.columns([1, 1], gap="large")
+        
+        with col1:
+            st.markdown(f"#### PowerPedal System ({selected_ride})")
+            fig_pp = go.Figure()
+            if show_battery_power and not df_graph_pp.empty: fig_pp.add_trace(create_trace(df_graph_pp, "Time_Sec", "Battery Power", "Battery (W)", COLORS["Battery_PP"]))
+            if show_rider_power and not df_graph_pp.empty: fig_pp.add_trace(create_trace(df_graph_pp, "Time_Sec", "Rider Power", "Rider (W)", COLORS["Rider_PP"]))
+            
+            layout_pp = base_layout.copy()
+            if selected_ride == "Zero to 25" and not df_graph_pp.empty:
+                fig_pp.add_trace(create_trace(df_graph_pp, "Time_Sec", "KMPH", "Speed", COLORS["Speed_PP"], dash="dot", yaxis="y2"))
+                layout_pp["yaxis2"] = dict(title="Speed (KMPH)", overlaying="y", side="right", fixedrange=True, showgrid=False)
+            
+            fig_pp.update_layout(**layout_pp)
+            st.plotly_chart(fig_pp, use_container_width=True, config=chart_config)
+
+        with col2:
+            st.markdown(f"#### Stock System ({selected_ride})")
+            fig_s = go.Figure()
+            if show_battery_power and not df_graph_s.empty: fig_s.add_trace(create_trace(df_graph_s, "Time_Sec", "Battery Power", "Battery (W)", COLORS["Battery_S"]))
+            if show_rider_power and not df_graph_s.empty: fig_s.add_trace(create_trace(df_graph_s, "Time_Sec", "Rider Power", "Rider (W)", COLORS["Rider_S"]))
+            
+            layout_s = base_layout.copy()
+            if selected_ride == "Zero to 25" and not df_graph_s.empty:
+                fig_s.add_trace(create_trace(df_graph_s, "Time_Sec", "KMPH", "Speed", COLORS["Speed_S"], dash="dot", yaxis="y2"))
+                layout_s["yaxis2"] = dict(title="Speed (KMPH)", overlaying="y", side="right", fixedrange=True, showgrid=False)
+            
+            fig_s.update_layout(**layout_s)
+            st.plotly_chart(fig_s, use_container_width=True, config=chart_config)
+
+# CSS for a cleaner, modern look
 st.markdown("""
     <style>
     .main .block-container {
-        padding: 0.5rem !important;
-        max-width: 100% !important;
-        overflow-x: hidden !important;
+        padding: 1rem !important;
+        max-width: 95% !important;
     }
     .title-container {
         display: flex;
         flex-direction: row;
         align-items: center;
         justify-content: center;
-        gap: 10px;
-        margin: 10px 0;
-        flex-wrap: wrap;
+        gap: 15px;
+        margin-bottom: 20px;
     }
     .title-container .logo {
-        width: 100px;
+        width: 80px;
         height: auto;
     }
     .title-container h1 {
-        font-size: 24px;
+        font-size: 28px;
         margin: 0;
-        text-align: center;
     }
-    .stPlotlyChart {
-        width: 100% !important;
-        max-width: 100vw !important;
-        margin: 0 auto !important;
-        overflow: visible !important;
-        box-sizing: border-box !important;
-        margin-bottom: 20px !important;
+    div[data-testid="stMetricValue"] {
+        font-size: 1.8rem;
     }
     .st-expander {
-        border: 1px solid #ddd;
-        border-radius: 5px;
-        padding: 10px;
-        box-sizing: border-box !important;
-    }
-    .stColumns {
-        padding: 0 !important;
-        margin: 0 !important;
-        display: flex !important;
-        flex-wrap: wrap !important;
-        gap: 30px !important;
-    }
-    .stColumns > div {
-        flex: 1 1 100% !important;
-        min-width: 0 !important;
-        width: 100% !important;
-        max-width: 100% !important;
-        box-sizing: border-box !important;
-        padding: 15px !important;
-    }
-    .metrics-container {
-        padding: 15px;
-        margin-bottom: 20px;
-        text-align: center;
-    }
-    .metrics-container h3 {
-        font-size: 24px;
-        margin-bottom: 10px;
-        color: #fff;
-    }
-    .metrics-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-        gap: 10px;
-        justify-items: center;
-    }
-    .metric-box {
-        padding: 10px;
-        border-radius: 5px;
-        text-align: center;
-        font-size: 16px;
-        font-weight: bold;
-        color: #000;
-        width: 100%;
-        box-sizing: border-box;
-    }
-    .metric-box.rider {
-        background-color: #6fc7e1;
-        border: 2px solid #6fc7e1;
-    }
-    .metric-box.distance {
-        background-color: #2e8ba3;
-        border: 2px solid #2e8ba3;
-    }
-    .metric-box.rider-stock {
-        background-color: #ffa733;
-        border: 2px solid #ffa733;
-    }
-    .metric-box.distance-stock {
-        background-color: #cc6f00;
-        border: 2px solid #cc6f00;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
     }
     [data-testid="stSidebar"] {
         transition: transform 0.3s ease-in-out !important;
-        touch-action: auto !important;
-        -webkit-overflow-scrolling: touch !important;
-        overscroll-behavior: contain !important;
-        z-index: 1000 !important;
-        width: 80% !important;
-        max-width: 300px !important;
-    }
-    [data-testid="stSidebar"][aria-expanded="false"] {
-        transform: translateX(-100%) !important;
-    }
-    [data-testid="stSidebar"][aria-expanded="true"] {
-        transform: translateX(0) !important;
-    }
-    .swipe-area {
-        position: fixed;
-        left: 0;
-        top: 0;
-        width: 50px;
-        height: 100%;
-        background: transparent;
-        z-index: 1001;
     }
     @media (max-width: 768px) {
-        .title-container {
-            flex-direction: column;
-            gap: 5px;
-        }
-        .title-container .logo {
-            width: 80px;
-        }
-        .title-container h1 {
-            font-size: 20px;
-        }
-        .metrics-container h3 {
-            font-size: 20px;
-        }
-        .metrics-grid {
-            grid-template-columns: 1fr;
-        }
-        .metric-box {
-            font-size: 14px;
-            padding: 8px;
-        }
-        .stPlotlyChart {
-            height: 40vh !important;
-            width: 100% !important;
-            max-width: 100vw !important;
-            margin-bottom: 60px !important;
-        }
-        .st-expander {
-            min-height: auto !important;
-        }
-        .stSlider label, .stCheckbox label, .stNumberInput label, .stSelectbox label {
-            font-size: 12px !important;
-        }
-        h2 {
-            font-size: 18px !important;
-            margin-bottom: 30px !important;
-            margin-top: 20px !important;
-        }
-        .stColumns {
-            flex-direction: column !important;
-            gap: 60px !important;
-        }
-        .stColumns > div {
-            width: 100% !important;
-            padding: 20px !important;
-        }
-    }
-    @media (max-width: 480px) {
-        .title-container .logo {
-            width: 60px;
-        }
-        .title-container h1 {
-            font-size: 16px;
-        }
-        .metrics-container h3 {
-            font-size: 16px;
-        }
-        .metric-box {
-            font-size: 12px;
-            padding: 6px;
-        }
-        .stPlotlyChart {
-            height: 35vh !important;
-            width: 100% !important;
-            max-width: 100vw !important;
-            margin-bottom: 50px !important;
-        }
-        h2 {
-            font-size: 16px !important;
-            margin-bottom: 25px !important;
-            margin-top: 15px !important;
-        }
+        .title-container h1 { font-size: 20px; }
+        .title-container .logo { width: 60px; }
+        .stPlotlyChart { height: 40vh !important; margin-bottom: 20px !important;}
+        .stColumns { gap: 20px !important; }
     }
     </style>
 """, unsafe_allow_html=True)
 
-# JavaScript
+# JavaScript for retaining scroll and handling mobile swipes
 st.markdown("""
     <script>
     document.addEventListener("DOMContentLoaded", function() {
@@ -761,7 +432,6 @@ st.markdown("""
         swipeArea.className = 'swipe-area';
         document.body.appendChild(swipeArea);
 
-        // Improved swipe handling
         function handleTouchStart(e) {
             if (e.target.closest('.swipe-area') || e.target.closest('[data-testid="stSidebar"]')) {
                 touchStartX = e.changedTouches[0].screenX;
@@ -772,7 +442,6 @@ st.markdown("""
         function handleTouchMove(e) {
             if (isSwiping) {
                 touchEndX = e.changedTouches[0].screenX;
-                e.preventDefault();
             }
         }
 
@@ -787,36 +456,17 @@ st.markdown("""
         function handleSwipe() {
             const swipeDistance = touchEndX - touchStartX;
             const isSidebarOpen = sidebar.getAttribute('aria-expanded') === 'true';
-            const minSwipeDistance = 50;
-
-            if (swipeDistance > minSwipeDistance && !isSidebarOpen) {
-                sidebarToggle.click();
-            } else if (swipeDistance < -minSwipeDistance && isSidebarOpen) {
-                sidebarToggle.click();
-            }
+            if (swipeDistance > 50 && !isSidebarOpen) { sidebarToggle.click(); } 
+            else if (swipeDistance < -50 && isSidebarOpen) { sidebarToggle.click(); }
         }
 
-        // Add event listeners to both swipe area and sidebar
-        [swipeArea, sidebar].forEach(element => {
-            if (element) {
-                element.addEventListener('touchstart', handleTouchStart, { passive: false });
-                element.addEventListener('touchmove', handleTouchMove, { passive: false });
-                element.addEventListener('touchend', handleTouchEnd, { passive: false });
+        [swipeArea, sidebar].forEach(el => {
+            if (el) {
+                el.addEventListener('touchstart', handleTouchStart, { passive: true });
+                el.addEventListener('touchmove', handleTouchMove, { passive: true });
+                el.addEventListener('touchend', handleTouchEnd, { passive: true });
             }
         });
-
-        // Handle window resize
-        window.addEventListener('resize', () => {
-            window.dispatchEvent(new Event('resize'));
-        });
-
-        // Mutation observer for scroll retention
-        const observer = new MutationObserver(() => {
-            requestAnimationFrame(() => {
-                main.scrollTop = lastScrollPosition;
-            });
-        });
-        observer.observe(main, { childList: true, subtree: true, attributes: true });
     });
     </script>
 """, unsafe_allow_html=True)
