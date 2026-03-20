@@ -3,7 +3,12 @@ import pandas as pd
 import plotly.graph_objs as go
 
 # --- CONFIG & SETUP ---
-st.set_page_config(page_title="PowerPedal Telemetry Analysis", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(
+    page_title="PowerPedal|Test Analysis Dashboard", 
+    page_icon="favicon.png", 
+    layout="wide", 
+    initial_sidebar_state="collapsed"
+)
 
 # --- ENGINEERING-GRADE CSS ---
 st.markdown("""
@@ -12,16 +17,17 @@ st.markdown("""
     
     html, body, [class*="css"] { font-family: 'Inter', sans-serif !important; }
     
+    /* Layout strictness */
     .main .block-container { 
         padding: 2rem 1.5rem !important; 
         max-width: 1240px !important; 
         margin: 0 auto;
     }
     
-    /* Enterprise Header */
+    /* Fancier, Bigger Enterprise Header */
     .enterprise-header {
         display: flex; align-items: center; justify-content: center; flex-direction: column;
-        margin-bottom: 20px; padding-bottom: 20px; 
+        margin-bottom: 40px; padding-bottom: 30px; 
         border-bottom: 1px solid var(--secondary-background-color);
         text-align: center;
     }
@@ -40,17 +46,11 @@ st.markdown("""
             -webkit-text-fill-color: transparent;
         }
     }
-    
-    /* Prominent Selector Panel */
-    .selector-panel {
-        background: rgba(2, 132, 199, 0.05);
-        border: 1px solid rgba(2, 132, 199, 0.2);
-        border-radius: 8px; padding: 25px; margin-bottom: 30px;
-        text-align: center;
+    .enterprise-header p {
+        font-size: 15px; color: #64748b; font-weight: 500; margin-top: 10px; text-transform: uppercase; letter-spacing: 2px;
     }
-    .selector-title { font-size: 16px; font-weight: 700; color: var(--text-color); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px;}
     
-    /* Factual Protocol Cards */
+    /* Factual Protocol & Conclusion Cards */
     .protocol-card {
         background: var(--background-color);
         border: 1px solid rgba(150,150,150,0.2);
@@ -58,8 +58,11 @@ st.markdown("""
         border-radius: 4px; padding: 25px; margin-bottom: 25px; margin-top: 10px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.02);
     }
-    .protocol-tag { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 12px; }
-    .protocol-title { font-size: 18px; font-weight: 700; color: var(--text-color); margin: 0 0 12px 0; }
+    .protocol-tag { 
+        font-size: 11px; font-weight: 700; color: #64748b; 
+        text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 12px; 
+    }
+    .protocol-title { font-size: 18px; font-weight: 700; color: var(--text-color); margin: 0 0 15px 0; }
     .protocol-text { font-size: 14px; color: var(--text-color); opacity: 0.85; line-height: 1.6; margin: 0; max-width: 1000px;}
     .protocol-bold { font-weight: 700; color: var(--text-color); }
     
@@ -72,32 +75,45 @@ st.markdown("""
         display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); 
         gap: 15px; margin-bottom: 40px; margin-top: 20px;
     }
-    .tm-box { background: var(--secondary-background-color); border: 1px solid rgba(150,150,150,0.1); border-radius: 4px; padding: 20px; text-align: left; }
+    .tm-box {
+        background: var(--secondary-background-color); 
+        border: 1px solid rgba(150,150,150,0.1);
+        border-radius: 4px; padding: 20px; text-align: left;
+    }
+    
     .tm-lbl { font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;}
     .tm-val { font-size: 24px; font-weight: 700; color: var(--text-color); line-height: 1.1; font-family: monospace;}
     .tm-sub { font-size: 12px; font-weight: 500; color: #64748b; margin-top: 6px; }
+
+    /* Graph Section Headers */
+    .g-title { font-size: 16px; font-weight: 700; margin: 0 0 4px 0; }
+    .g-sub { font-size: 12px; color: #64748b; margin: 0 0 20px 0; }
 
     /* Section Dividers */
     .section-title { font-size: 20px; font-weight: 700; margin: 40px 0 15px 0; color: var(--text-color); border-bottom: 1px solid rgba(150,150,150,0.2); padding-bottom: 10px;}
 
     /* Clean UI Overrides */
     #MainMenu {visibility: hidden;} header {visibility: hidden;} footer {visibility: hidden;}
-    .stSelectbox { max-width: 600px; margin: 0 auto; }
+    .stSelectbox label { font-size: 13px !important; font-weight: 600 !important; text-transform: uppercase; color: #64748b; }
     </style>
 """, unsafe_allow_html=True)
 
 # --- EXACT RAW DATA LOADING ---
 @st.cache_data(ttl=300)
 def load_exact_telemetry(csv_url):
+    """Loads the exact data from the CSV. NO smoothing, NO peak clipping."""
     try:
         df = pd.read_csv(csv_url)
         for col in ["Time", "Battery Power", "Rider Power"]:
             if col not in df.columns: df[col] = 0
             else: df[col] = pd.to_numeric(df[col], errors="coerce")
         df = df.dropna()
+        
         df["Time_Sec"] = (df["Time"] - df["Time"].min()) / 1000.0
+        # Preserve exact raw peaks
         df["Motor Output"] = df["Battery Power"]
         df["Human Input"] = df["Rider Power"]
+            
         return df
     except Exception as e:
         return pd.DataFrame()
@@ -114,14 +130,13 @@ csv_files = {
 st.markdown("""
     <div class="enterprise-header">
         <img src="https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/logo.png">
-        <h1>PowerPedal™ Advanced Telemetry Dashboard</h1>
+        <h1>PowerPedal™ Telemetry Dashboard</h1>
+        <p>Comparative System Analytics</p>
     </div>
 """, unsafe_allow_html=True)
 
-# --- PROMINENT SELECTOR PANEL ---
-st.markdown('<div class="selector-panel"><div class="selector-title">📊 Select Test Protocol For Analysis</div>', unsafe_allow_html=True)
-selected_ride = st.selectbox("", list(csv_files.keys()), label_visibility="collapsed")
-st.markdown('</div>', unsafe_allow_html=True)
+# Compact Selector
+selected_ride = st.selectbox("Select Telemetry Dataset:", list(csv_files.keys()))
 
 with st.spinner("Compiling raw telemetry data..."):
     df_pp = load_exact_telemetry(csv_files[selected_ride]["PowerPedal"])
@@ -172,52 +187,77 @@ else:
 st.markdown('<div class="section-title">2. Raw Telemetry Data</div>', unsafe_allow_html=True)
 
 if not df_pp.empty and not df_s.empty:
-    max_power_y = max(df_pp[["Motor Output", "Human Input"]].max().max(), df_s[["Motor Output", "Human Input"]].max().max()) * 1.1 
+    
+    # Calculate global max strictly based on actual RAW data points
+    max_power_y = max(
+        df_pp[["Motor Output", "Human Input"]].max().max(),
+        df_s[["Motor Output", "Human Input"]].max().max()
+    ) * 1.1 # 10% headroom
+    
     max_time_x = max(df_pp["Time_Sec"].max(), df_s["Time_Sec"].max())
     
-    # Viewport formatting for dense data
+    # Initial Viewport Logic
     initial_x_range = [0, min(60, max_time_x)]
 
     def create_engineering_graph(df, motor_color, human_color):
         fig = go.Figure()
+        
+        # Human Input
         fig.add_trace(go.Scatter(
-            x=df["Time_Sec"], y=df["Human Input"], name="Human Input (W)", mode='lines',
-            line=dict(color=human_color, width=1.5), fill='tozeroy', fillcolor=human_color.replace('rgb', 'rgba').replace(')', ', 0.1)'),
+            x=df["Time_Sec"], y=df["Human Input"],
+            name="Human Input (W)", mode='lines',
+            line=dict(color=human_color, width=1.5),
+            fill='tozeroy', fillcolor=human_color.replace('rgb', 'rgba').replace(')', ', 0.1)'),
             hovertemplate="Time: %{x:.2f}s<br>Human: %{y:.1f} W<extra></extra>"
         ))
+        
+        # Motor Output
         fig.add_trace(go.Scatter(
-            x=df["Time_Sec"], y=df["Motor Output"], name="Motor Output (W)", mode='lines',
-            line=dict(color=motor_color, width=1.5), fill='tozeroy', fillcolor=motor_color.replace('rgb', 'rgba').replace(')', ', 0.2)'),
+            x=df["Time_Sec"], y=df["Motor Output"],
+            name="Motor Output (W)", mode='lines',
+            line=dict(color=motor_color, width=1.5),
+            fill='tozeroy', fillcolor=motor_color.replace('rgb', 'rgba').replace(')', ', 0.2)'),
             hovertemplate="Time: %{x:.2f}s<br>Motor: %{y:.1f} W<extra></extra>"
         ))
+
         fig.update_layout(
             xaxis=dict(title="Time Elapsed (s)", range=initial_x_range, showgrid=True, gridcolor='rgba(150,150,150,0.1)', zeroline=False, title_font=dict(size=12), fixedrange=False),
             yaxis=dict(title="Power (Watts)", range=[0, max_power_y], showgrid=True, gridcolor='rgba(150,150,150,0.1)', zeroline=False, title_font=dict(size=12), fixedrange=True),
-            hovermode="x unified", margin=dict(l=10, r=10, t=10, b=10),
+            hovermode="x unified",
+            margin=dict(l=10, r=10, t=10, b=10),
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, font=dict(size=12)),
-            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=380, dragmode="pan" 
+            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+            height=380, 
+            dragmode="pan" 
         )
         return fig
 
     col1, col2 = st.columns(2, gap="medium")
-    plotly_config = {'displayModeBar': True, 'scrollZoom': False, 'modeBarButtonsToRemove': ['zoom2d', 'select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d']}
+    
+    plotly_config = {
+        'displayModeBar': True, 
+        'scrollZoom': False,
+        'modeBarButtonsToRemove': ['zoom2d', 'select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d']
+    }
 
     with col1:
-        st.markdown('<p style="font-size: 16px; font-weight: 700; margin: 0 0 4px 0;">PowerPedal™ Sensor Architecture</p>', unsafe_allow_html=True)
-        st.markdown('<p style="font-size: 12px; color: #64748b; margin: 0 0 20px 0;">Swipe/Pan Left and Right to traverse the timeline.</p>', unsafe_allow_html=True)
-        st.plotly_chart(create_engineering_graph(df_pp, "rgb(2, 132, 199)", "rgb(245, 158, 11)"), use_container_width=True, config=plotly_config, theme="streamlit")
+        st.markdown('<p class="g-title">PowerPedal™ Sensor Architecture</p>', unsafe_allow_html=True)
+        st.markdown('<p class="g-sub">Swipe/Pan Left and Right to traverse the timeline.</p>', unsafe_allow_html=True)
+        fig_pp = create_engineering_graph(df_pp, motor_color="rgb(2, 132, 199)", human_color="rgb(245, 158, 11)")
+        st.plotly_chart(fig_pp, use_container_width=True, config=plotly_config, theme="streamlit")
 
     with col2:
-        st.markdown('<p style="font-size: 16px; font-weight: 700; margin: 0 0 4px 0;">Stock Baseline Architecture</p>', unsafe_allow_html=True)
-        st.markdown('<p style="font-size: 12px; color: #64748b; margin: 0 0 20px 0;">Swipe/Pan Left and Right to traverse the timeline.</p>', unsafe_allow_html=True)
-        st.plotly_chart(create_engineering_graph(df_s, "rgb(100, 116, 139)", "rgb(245, 158, 11)"), use_container_width=True, config=plotly_config, theme="streamlit")
+        st.markdown('<p class="g-title">Stock Baseline Architecture</p>', unsafe_allow_html=True)
+        st.markdown('<p class="g-sub">Swipe/Pan Left and Right to traverse the timeline.</p>', unsafe_allow_html=True)
+        fig_s = create_engineering_graph(df_s, motor_color="rgb(100, 116, 139)", human_color="rgb(245, 158, 11)")
+        st.plotly_chart(fig_s, use_container_width=True, config=plotly_config, theme="streamlit")
 
 else:
     st.error("Telemetry data unavailable for this selection.")
 
 
 # ==========================================
-# CHRONOLOGY STEP 3: EMPIRICAL RESULTS
+# CHRONOLOGY STEP 3: EMPIRICAL RESULTS (URBAN ONLY)
 # ==========================================
 if "Urban City Ride" in selected_ride and not df_pp.empty and not df_s.empty:
     st.markdown('<div class="section-title">3. Empirical Results</div>', unsafe_allow_html=True)
@@ -264,7 +304,6 @@ if "Urban City Ride" in selected_ride and not df_pp.empty and not df_s.empty:
 # ==========================================
 # CHRONOLOGY STEP 4: EXPERT ANALYSIS (UNIQUE TO EACH RIDE)
 # ==========================================
-# Determine the step number dynamically based on if Step 3 (Results) was rendered
 step_num = "4" if "Urban City Ride" in selected_ride else "3"
 st.markdown(f'<div class="section-title">{step_num}. Executive Technical Summary</div>', unsafe_allow_html=True)
 
@@ -288,7 +327,7 @@ elif "Zero to 25" in selected_ride:
             <h3 class="protocol-title">Phase Alignment & Latency</h3>
             <ul class="conclusion-list">
                 <li><span class="protocol-bold">Algorithmic Linearity:</span> The PowerPedal™ telemetry demonstrates near-zero latency from a standing start. As the rider initiates acceleration, the motor output perfectly tracks the human input curve up to the 500W peak, generating a linear, predictable acceleration vector.</li>
-                <li><span class="protocol-bold">Elimination of Phase Lag:</span> The stock baseline exhibits delayed engagement followed by an aggressive, non-linear power dump. This creates the "jolt" characteristic of generic cadence setups. PowerPedal's sensor array completely resolves this phase lag.</li>
+                <li><span class="protocol-bold">Elimination of Phase Lag:</span> The stock baseline exhibits delayed engagement followed by an aggressive, non-linear power dump. This creates the "jolt" characteristic of generic setups. PowerPedal's sensor array completely resolves this phase lag.</li>
                 <li><span class="protocol-bold">Drivetrain Preservation:</span> By ramping power proportionally rather than dumping peak wattage instantaneously, the PowerPedal algorithm dramatically reduces sheer mechanical stress on the internal hub gearing and chain assembly.</li>
             </ul>
         </div>
@@ -308,7 +347,6 @@ elif "Starts & Stops" in selected_ride:
     """, unsafe_allow_html=True)
 
 else:
-    # 10-Degree Slope
     st.markdown("""
         <div class="protocol-card" style="border-left: 4px solid #10b981; box-shadow: none;">
             <div class="protocol-tag" style="color: #10b981;">High-Load Output</div>
