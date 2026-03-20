@@ -4,7 +4,7 @@ import plotly.graph_objs as go
 
 # --- CONFIG & SETUP ---
 st.set_page_config(
-    page_title="PowerPedal|Test Analysis Dashboard", 
+    page_title="PowerPedal Telemetry Analysis", 
     page_icon="favicon.png", 
     layout="wide", 
     initial_sidebar_state="collapsed"
@@ -27,7 +27,7 @@ st.markdown("""
     /* Fancier, Bigger Enterprise Header */
     .enterprise-header {
         display: flex; align-items: center; justify-content: center; flex-direction: column;
-        margin-bottom: 40px; padding-bottom: 30px; 
+        margin-bottom: 20px; padding-bottom: 30px; 
         border-bottom: 1px solid var(--secondary-background-color);
         text-align: center;
     }
@@ -48,6 +48,18 @@ st.markdown("""
     }
     .enterprise-header p {
         font-size: 15px; color: #64748b; font-weight: 500; margin-top: 10px; text-transform: uppercase; letter-spacing: 2px;
+    }
+    
+    /* HIGH-VISIBILITY SELECTOR PANEL */
+    .selector-container {
+        background: linear-gradient(90deg, rgba(2, 132, 199, 0.05), rgba(2, 132, 199, 0.02));
+        border: 1px solid rgba(2, 132, 199, 0.3);
+        border-radius: 8px; padding: 25px; margin-bottom: 40px;
+    }
+    .selector-label {
+        font-size: 14px; font-weight: 800; color: #0284c7; 
+        text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;
+        display: flex; align-items: center; gap: 8px;
     }
     
     /* Factual Protocol & Conclusion Cards */
@@ -94,20 +106,33 @@ st.markdown("""
 
     /* Clean UI Overrides */
     #MainMenu {visibility: hidden;} header {visibility: hidden;} footer {visibility: hidden;}
-    .stSelectbox label { font-size: 13px !important; font-weight: 600 !important; text-transform: uppercase; color: #64748b; }
+    
+    /* Make selectbox huge and obvious */
+    div[data-baseweb="select"] { cursor: pointer; border: 2px solid rgba(2, 132, 199, 0.5); border-radius: 8px;}
+    .stSelectbox label { display: none; } /* Hide default label, using custom one */
     </style>
 """, unsafe_allow_html=True)
 
-# --- EXACT RAW DATA LOADING ---
-@st.cache_data(ttl=300)
+# --- HIGH-PERFORMANCE DATA LOADING ---
+# Removed ttl=300. The data will now cache instantly in RAM and never re-download unless the app restarts.
+@st.cache_data(show_spinner=False)
 def load_exact_telemetry(csv_url):
-    """Loads the exact data from the CSV. NO smoothing, NO peak clipping."""
+    """Loads the exact data from the CSV. Extremely fast selective column parsing."""
     try:
-        df = pd.read_csv(csv_url)
+        # Load ONLY the necessary columns to save massive amounts of RAM and parsing time
+        def col_filter(x):
+            return x in ["Time", "Battery Power", "Rider Power", "Ride Distance"]
+            
+        df = pd.read_csv(csv_url, usecols=col_filter)
+        
         for col in ["Time", "Battery Power", "Rider Power"]:
-            if col not in df.columns: df[col] = 0
-            else: df[col] = pd.to_numeric(df[col], errors="coerce")
-        df = df.dropna()
+            if col not in df.columns: 
+                df[col] = 0
+            else: 
+                df[col] = pd.to_numeric(df[col], errors="coerce")
+                
+        # Drop only if essential telemetry is missing
+        df = df.dropna(subset=["Time", "Battery Power", "Rider Power"])
         
         df["Time_Sec"] = (df["Time"] - df["Time"].min()) / 1000.0
         # Preserve exact raw peaks
@@ -130,15 +155,26 @@ csv_files = {
 st.markdown("""
     <div class="enterprise-header">
         <img src="https://raw.githubusercontent.com/ranjit2602/powerpedal_test_dashboard/main/logo.png">
-        <h1>PowerPedal™ Telemetry Dashboard</h1>
+        <h1>PowerPedal™ Advanced Telemetry Dashboard</h1>
         <p>Comparative System Analytics</p>
     </div>
 """, unsafe_allow_html=True)
 
-# Compact Selector
+# --- HIGH VISIBILITY SELECTOR ---
+st.markdown("""
+    <div class="selector-container">
+        <div class="selector-label">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 15h18v4a2 2 0 0 1-4 0v-4"/><path d="M3 8v11c0 1.1.9 2 2 2h14"/></svg>
+            Select Test Protocol For Analysis
+        </div>
+""", unsafe_allow_html=True)
+
 selected_ride = st.selectbox("Select Telemetry Dataset:", list(csv_files.keys()))
 
-with st.spinner("Compiling raw telemetry data..."):
+st.markdown("</div>", unsafe_allow_html=True)
+
+# Fast loading spinner
+with st.spinner("Extracting and mapping telemetry data..."):
     df_pp = load_exact_telemetry(csv_files[selected_ride]["PowerPedal"])
     df_s = load_exact_telemetry(csv_files[selected_ride]["Stock"])
 
